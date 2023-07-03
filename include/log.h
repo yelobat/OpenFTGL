@@ -4,8 +4,11 @@
 #include <stddef.h>
 
 typedef enum ftgl_return_t {
-        FTGL_NO_ERROR = 0,
+        FTGL_NO_ERROR,
         FTGL_MEMORY_ERROR,
+        FTGL_ATLAS_FULL_ERROR,
+        FTGL_NO_FIXED_SIZE_FONT_ERROR,
+        FTGL_FREETYPE_ERROR,
 } ftgl_return_t;
 
 #define FTGL_DEBUG

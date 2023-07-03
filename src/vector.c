@@ -103,6 +103,7 @@ ftgl_vector_reserve(ftgl_vector_t *vec,
 {
 #ifdef FTGL_DEBUG
         assert(vec);
+        assert(vec->items);
 #endif /* FTGL_DEBUG */
 
         if (vec->capacity < size) {
@@ -114,9 +115,9 @@ ftgl_vector_reserve(ftgl_vector_t *vec,
                         return FTGL_MEMORY_ERROR;
                 }
                 vec->items = new_items;
-                vec->capacity = size;
                 memset((char *)(vec->items) + (vec->capacity * vec->item_size), 0,
                        (size - vec->capacity) * vec->item_size);
+                vec->capacity = size;
         }
 
         return FTGL_NO_ERROR;

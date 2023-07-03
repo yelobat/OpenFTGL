@@ -614,7 +614,7 @@ make_distance_mapb(unsigned char *img,
         return out;
 }
 
-static size_t
+size_t
 utf8_surrogate_len(const char *character)
 {
         size_t result = 0;
@@ -636,7 +636,7 @@ utf8_surrogate_len(const char *character)
         return result;
 }
 
-static size_t
+size_t
 utf8_strlen(const char *string)
 {
         const char *ptr = string;
@@ -651,7 +651,7 @@ utf8_strlen(const char *string)
         return result;
 }
 
-static uint32_t
+uint32_t
 utf8_to_utf32(const char *character)
 {
         if( !character ) {
@@ -817,7 +817,7 @@ ftgl_texture_font_init(ftgl_texture_font_t *font)
         if (!font->glyphs) {
                 return FTGL_MEMORY_ERROR;
         }
-        
+
         font->height = 0;
         font->height = 0;
         font->ascender = 0;
@@ -1146,9 +1146,12 @@ ftgl_texture_font_get_glyph(ftgl_texture_font_t *font,
         assert(font->atlas);
 #endif /* FTGL_DEBUG */
 
+        
+
         glyph = NULL;
+        
         if (!(glyph = ftgl_texture_font_find_glyph(font, codepoint))) {
-                if (ftgl_texture_font_load_glyph(font, codepoint)) {
+                if (ftgl_texture_font_load_glyph(font, codepoint) == FTGL_NO_ERROR) {
                         glyph = ftgl_texture_font_find_glyph(font, codepoint);
                 }
         }
@@ -1228,7 +1231,7 @@ ftgl_texture_font_get_glyph_gi(ftgl_texture_font_t *font,
         if ((glyph = ftgl_texture_font_find_glyph_gi(font, glyph_index)))
                 return glyph;
 
-        if (ftgl_texture_font_load_glyph_gi(font, glyph_index, glyph_index))
+        if (ftgl_texture_font_load_glyph_gi(font, glyph_index, glyph_index) != FTGL_NO_ERROR)
                 return ftgl_texture_font_find_glyph_gi(font, glyph_index);
 
         return NULL;
@@ -1240,10 +1243,12 @@ ftgl_texture_font_find_glyph_gi(ftgl_texture_font_t *font,
 {
         uint32_t i = codepoint >> 8;
         uint32_t j = codepoint & 0xFF;
+
         ftgl_texture_glyph_t **glyph_index1, *glyph;
 
-        if (font->glyphs->size <= i)
+        if (font->glyphs->size <= i) {
                 return NULL;
+        }
 
         glyph_index1 = *(ftgl_texture_glyph_t ***) ftgl_vector_get(font->glyphs, i);
 
@@ -1297,50 +1302,40 @@ ftgl_texture_font_generate_kerning(ftgl_texture_font_t *font,
 #ifdef FTGL_DEBUG
         assert(font);
 #endif /* FTGL_DEBUG */
-        for (i = 0; i < ftgl_vector_size(font->glyphs); i++) {
-                ftgl_texture_glyph_t **__glyphs;
-                if ((__glyphs = *(ftgl_texture_glyph_t ***) ftgl_vector_get(font->glyphs, i))) {
-                        int __i;
-                        for (__i = 0; __i < 0x100; __i++) {
-                                if ((glyph = __glyphs[__i])) {
-                                        glyph_index = FT_Get_Char_Index(*face, glyph->codepoint);
-
-                                        for (k = 0; k < glyph->kerning->size; k++) {
-                                                free( *(float **) ftgl_vector_get(glyph->kerning, k));
-                                        }
-                                        ftgl_vector_clear(glyph->kerning);
-
-                                        for (j = 0; j < ftgl_vector_size(font->glyphs); j++) {
-                                                ftgl_texture_glyph_t **__prev_glyphs;
-                                                if ((__prev_glyphs = *(ftgl_texture_glyph_t ***) ftgl_vector_get(font->glyphs, j))) {
-                                                        int __j;
-                                                        for (__j = 0; __j < 0x100; __j++) {
-                                                                if ((prev_glyph = __prev_glyphs[__j])) {
-                                                                        prev_index = FT_Get_Char_Index(*face,
-                                                                                                       prev_glyph->codepoint);
-                                                                        FT_Get_Kerning(*face, prev_index, glyph_index,
-                                                                                       FT_KERNING_UNFITTED, &kerning);
-
-                                                                        if (kerning.x) {
-                                                                                ftgl_texture_font_index_kerning(glyph,
-                                                                                                                prev_glyph->codepoint,
-                                                                                                                ftgl_convert_F26Dot6_to_float(kerning.x) / HRESf);
-                                                                        }
-                                                                }
-                                                        }
-                                                }
-                                        }
-                                }
+        
+GLYPHS_ITERATOR(i, glyph, font->glyphs ) {
+                glyph_index = FT_Get_Char_Index( *face, glyph->codepoint );
+                for(k=0; k < glyph->kerning->size; k++)
+                        free( *(float **) ftgl_vector_get( glyph->kerning, k ) );
+                ftgl_vector_clear( glyph->kerning );
+        
+                GLYPHS_ITERATOR(j, prev_glyph, font->glyphs ) {
+                        prev_index = FT_Get_Char_Index( *face, prev_glyph->codepoint );
+                        FT_Get_Kerning( *face, prev_index, glyph_index, FT_KERNING_UNFITTED, &kerning );
+                        if( kerning.x ) {
+                                ftgl_texture_font_index_kerning( glyph,
+                                                                 prev_glyph->codepoint,
+                                                                 ftgl_convert_F26Dot6_to_float(kerning.x) / HRESf );
+                        }
+                        FT_Get_Kerning( *face, glyph_index, prev_index, FT_KERNING_UNFITTED, &kerning );
+                        if( kerning.x ) {
+                                ftgl_texture_font_index_kerning( prev_glyph,
+                                                                 glyph->codepoint,
+                                                                 kerning.x / (float)(HRESf*HRESf) );
                         }
                 }
-        }
+                GLYPHS_ITERATOR_END
+                        }
+        GLYPHS_ITERATOR_END
 }
 
-int
+ftgl_return_t
 ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                                 uint32_t glyph_index,
                                 uint32_t ucodepoint)
 {
+        ftgl_return_t ret;
+        
         size_t i, x, y;
 
         FT_Error error;
@@ -1358,21 +1353,21 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
         size_t missed = 0;
 
         if (ftgl_texture_font_find_glyph_gi(font, ucodepoint))
-                return 1;
-
-        if (!ftgl_texture_font_load_face(font, font->size))
-                return 0;
+                return FTGL_NO_ERROR;
+        
+        if ((ret = ftgl_texture_font_load_face(font, font->size)) != FTGL_NO_ERROR)
+                return ret;
 
         flags = 0;
         ft_glyph_top = 0;
         ft_glyph_left = 0;
+        
         if (!glyph_index) {
                 ftgl_texture_glyph_t *glyph;
                 if ((glyph = ftgl_texture_font_find_glyph(font, "\0"))) {
                         ftgl_texture_font_index_glyph(font, glyph, ucodepoint);
                         ftgl_texture_font_close(font, FTGL_MODE_AUTO_CLOSE, FTGL_MODE_AUTO_CLOSE);
-
-                        return 1;
+                        return FTGL_NO_ERROR;
                 }
         }
 
@@ -1389,6 +1384,7 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                 flags |= FT_LOAD_FORCE_AUTOHINT;
         }
 
+        
         if (font->atlas->depth == 3) {
                 FT_Library_SetLcdFilter(font->library->library, FT_LCD_FILTER_LIGHT);
                 flags |= FT_LOAD_TARGET_LCD;
@@ -1400,6 +1396,7 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                 flags |= FT_LOAD_TARGET_LIGHT;
         }
 
+        
         if (font->atlas->depth == 4) {
 #ifdef FT_LOAD_COLOR
                 flags |= FT_LOAD_COLOR;
@@ -1410,23 +1407,28 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
 #endif /* FT_LOAD_COLOR */
         }
 
+        
         error = FT_Activate_Size(font->ft_size);
         if (error) {
 #ifdef FTGL_DEBUG
                 FTGL_LOG_MESSAGE(FT_Error_String(error));
 #endif /* FTGL_DEBUG */
-                return 0;
+                return FTGL_FREETYPE_ERROR;
         }
 
+        
         error = FT_Load_Glyph(font->face, glyph_index, flags);
         if (error) {
 #ifdef FTGL_DEBUG
                 FTGL_LOG_MESSAGE(FT_Error_String(error));
 #endif /* FTGL_DEBUG */
                 ftgl_texture_font_close(font, FTGL_MODE_AUTO_CLOSE, FTGL_MODE_AUTO_CLOSE);
-                return 0;
+                return FTGL_FREETYPE_ERROR;
         }
 
+
+
+        
         if (font->rendermode == FTGL_RENDER_NORMAL
             || font->rendermode == FTGL_RENDER_SIGNED_DISTANCE_FIELD) {
                 slot          = font->face->glyph;
@@ -1446,6 +1448,7 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                         goto cleanup_stroker;
                 }
 
+                
                 FT_Stroker_Set(stroker,
                                (int) (font->outline_thickness * HRES),
                                FT_STROKER_LINECAP_ROUND,
@@ -1453,7 +1456,6 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                                0);
 
                 error = FT_Get_Glyph(font->face->glyph, &ft_glyph);
-
                 if (error) {
 #ifdef FTGL_DEBUG
                         FTGL_LOG_MESSAGE(FT_Error_String(error));
@@ -1461,6 +1463,7 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                         goto cleanup_stroker;
                 }
 
+                
                 if (font->rendermode == FTGL_RENDER_OUTLINE_EDGE) {
                         error = FT_Glyph_Stroke(&ft_glyph, stroker, 1);
                 } else if (font->rendermode == FTGL_RENDER_OUTLINE_POSITIVE) {
@@ -1507,10 +1510,11 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
 #ifdef FTGL_DEBUG
                         FTGL_LOG_MESSAGE(FT_Error_String(error));
 #endif /* FTGL_DEBUG */
-                        return 0;
+                        return FTGL_FREETYPE_ERROR;
                 }
         }
 
+        
         struct {
                 int left;
                 int top;
@@ -1538,14 +1542,16 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
 
         region = ftgl_texture_atlas_get_region(font->atlas, tgt_w, tgt_h);
 
+        
         if (region.x < 0) {
 #ifdef FTGL_DEBUG
                 FTGL_LOG_MESSAGE("Texture Atlas Full");
 #endif /* FTGL_DEBUG */
                 ftgl_texture_font_close(font, FTGL_MODE_AUTO_CLOSE, FTGL_MODE_AUTO_CLOSE);
-                return 0;
+                return FTGL_FREETYPE_ERROR;
         }
 
+        
         x = region.x;
         y = region.y;
 
@@ -1643,6 +1649,7 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                 glyph->advance_y = ftgl_convert_F26Dot6_to_float(slot->advance.y) * font->scale;
         }
 
+
         int free_glyph = ftgl_texture_font_index_glyph(font, glyph, ucodepoint);
         if (!glyph_index) {
                 if (!free_glyph) {
@@ -1655,6 +1662,7 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                 free(glyph);
         }
 
+        
         if (font->rendermode != FTGL_RENDER_NORMAL
             && font->rendermode != FTGL_RENDER_SIGNED_DISTANCE_FIELD) {
                 FT_Done_Glyph(ft_glyph);
@@ -1662,7 +1670,7 @@ ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
 
         ftgl_texture_font_generate_kerning(font, &font->library->library, &font->face);
         ftgl_texture_font_close(font, FTGL_MODE_AUTO_CLOSE, FTGL_MODE_AUTO_CLOSE);
-        return 1;
+        return FTGL_NO_ERROR;
 }
 
 size_t
@@ -1717,7 +1725,12 @@ ftgl_texture_font_enlarge_glyphs(ftgl_texture_font_t *font,
 {
         size_t i;
         ftgl_texture_glyph_t *g;
-        
+        GLYPHS_ITERATOR(i, g, font->glyphs) {
+                g->s0 *= mulw;
+                g->s1 *= mulw;
+                g->t0 *= mulh;
+                g->t1 *= mulh;
+        } GLYPHS_ITERATOR_END
 }
 
 void

@@ -316,6 +316,15 @@ typedef struct ftgl_texture_font_t {
         float scale;
 } ftgl_texture_font_t;
 
+size_t
+utf8_surrogate_len(const char *character);
+
+size_t
+utf8_strlen(const char *string);
+
+uint32_t
+utf8_to_utf32(const char *character);
+
 ftgl_texture_font_library_t *
 ftgl_texture_font_library_create(void);
 
@@ -369,7 +378,7 @@ ftgl_texture_glyph_t *
 ftgl_texture_font_find_glyph_gi(ftgl_texture_font_t *font,
                                 uint32_t glyph_index);
 
-int
+ftgl_return_t
 ftgl_texture_font_load_glyph_gi(ftgl_texture_font_t *font,
                                 uint32_t glyph_index,
                                 uint32_t ucodepoint);
@@ -405,4 +414,21 @@ ftgl_texture_glyph_free(ftgl_texture_glyph_t *glyph);
 
 ftgl_texture_glyph_t *
 ftgl_texture_glyph_copy(ftgl_texture_glyph_t *glyph);
+
+#define GLYPHS_ITERATOR1(index, name, glyph) \
+        for (index = 0; index < ftgl_vector_size(glyph); index++) { \
+                ftgl_texture_glyph_t **__glyphs;
+#define GLYPHS_ITERATOR2(index, name, glyph) \
+        if ((__glyphs = *(ftgl_texture_glyph_t ***) ftgl_vector_get(glyph, index))) {  \
+                int __i; \
+                for (__i = 0; __i < 0x100; __i++) { \
+                        if ((name = __glyphs[__i]))
+#define GLYPHS_ITERATOR(index, name, glyph)         \
+        GLYPHS_ITERATOR1(index, name, glyph)        \
+             GLYPHS_ITERATOR2(index, name, glyph)
+
+#define GLYPHS_ITERATOR_END1 }
+#define GLYPHS_ITERATOR_END2 } }
+#define GLYPHS_ITERATOR_END } } } 
+
 #endif /* FTGL_TEXTURE_FONT_H_ */
