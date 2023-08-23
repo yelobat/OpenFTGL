@@ -44,6 +44,12 @@ extern FT_Library ftgl_font_library;
 #define FTGL_FREE(x) free(x)
 #endif
 
+typedef enum ftgl_return_t {
+	FTGL_NO_ERROR = 0,
+	FTGL_MEMORY_ERROR,
+	FTGL_FREETYPE_ERROR,
+} ftgl_return_t;
+
 typedef struct ftgl_glyph_t {
 	/**
 	 * The bounding box of the glyph in the texture
@@ -230,35 +236,77 @@ ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 		     GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
 	ftgl_glyph_t *glyph;
-	glyph = malloc(sizeof(*glyph));
+	glyph = FTGL_MALLOC(sizeof(*glyph));
 	if (!glyph) {
-		
+		return NULL;
 	}
+
+	glyph->bbox = bbox;
+	glyph->codepoint = codepoint;
+	glyph->offset_x = offset_x;
+	glyph->offset_y = offset_y;
+	glyph->advance_x = advance_x;
+	glyph->advance_y = advance_y;
+	return glyph;
 }
 
 static void
 ftgl_glyph_free(ftgl_glyph_t *glyph)
 {
-
+	glyph->bbox = ll_ivec4_create(0,0,0,0);
+	glyph->codepoint = 0;
+	glyph->offset_x = 0;
+	glyph->offset_y = 0;
+	glyph->advance_x = 0;
+	glyph->advance_y = 0;
+	FTGL_FREE(glyph);
 }
 
 static ftgl_glyphlist_t *
 ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 			 GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
+	ftgl_glyphlist_t *glyphlist;
+	ftgl_glyph_t *glyph;
 
+	glyph = ftgl_glyph_create4iv(codepoint, bbox, offset_x,
+				     offset_y, advance_x, advance_y);
+	if (!glyph) {
+		return NULL;
+	}
+
+	glyphlist = FTGL_MALLOC(sizeof(*glyphlist));
+	if (!glyphlist) {
+		FTGL_FREE(glyph);
+		return NULL;
+	}
+
+	glyphlist->glyph = glyph;
+	glyphlist->next = NULL;
+	return glyphlist;
 }
 
 static void
 ftgl_glyphlist_free(ftgl_glyphlist_t *glyphlist)
 {
-
+	ftgl_glyphlist_free(glyphlist->glyph);
+	glyphlist->glyph = NULL;
+	glyphlist->next = NULL;
+	FTGL_FREE(glyphlist);
 }
 
 static ftgl_glyphmap_t *
 ftgl_glyphmap_create(void)
 {
+	ftgl_glyphmap_t *glyphmap;
+	glyphmap = FTGL_MALLOC(sizeof(*glyphmap));
+	if (!glyphmap) {
+		return NULL;
+	}
 
+	memset(glyphmap->map, 0, sizeof(*glyphmap->map)
+	       * FTGL_FONT_GLYPHMAP_CAPACITY);
+	return glyphmap;
 }
 
 static ftgl_return_t
@@ -266,70 +314,273 @@ ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
 		     uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 		     GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
+	size_t hash;
+	ftgl_glyphlist_t *glyphlist;
+	if (ftgl_glyphmap_find_glyph(glyphmap, codepoint)) {
+		return FTGL_NO_ERROR;
+	}
 
+	glyphlist = ftgl_glyphlist_create4iv(codepoint, bbox, offset_x,
+					     offset_y, advance_x, advance_y);
+	if (!glyphlist) {
+		return FTGL_MEMORY_ERROR;
+	}
+
+	hash = codepoint % FTGL_FONT_GLYPHMAP_CAPACITY;
+	if (glyphmap->map[hash]) {
+		glyphlist->next = glyphmap->map[hash];
+		glyphmap->map[hash] = glyphlist;
+	} else {
+		glyphmap->map[hash] = glyphlist;
+	}
+	return FTGL_NO_ERROR;
 }
 
 static ftgl_glyph_t *
 ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
 			 uint32 codepoint)
 {
+	ftgl_glyph_t *glyph;
+	ftgl_glyphlist_t *glyphlist;
+	size_t hash;
 
+	hash = codepoint % FTGL_FONT_GLYPHMAP_CAPACITY;
+	glyphlist = glyphmap->map[hash];
+	while (glyphlist != NULL) {
+		glyph = glyphlist->glyph;
+		if (glyph->codepoint == codepoint) {
+			return glyph;
+		}
+		glyphlist = glyphlist->next;
+	}
+	return NULL;
 }
 
 static void
 ftgl_glyphmap_free(ftgl_glyphmap_t *glyphmap)
 {
+	size_t i;
+	ftgl_glyphlist_t *glyphlist;
 
+	for (i = 0; i < FTGL_FONT_GLYPHMAP_CAPACITY; i++) {
+		glyphlist = glyphmap->map[i];
+		while (glyphlist != NULL) {
+			ftgl_glyphlist_t *next;
+			next = glyphlist->next;
+			ftgl_glyphlist_free(glyphlist);
+			glyphlist = next;
+		}
+	}
+
+	memset(glyphmap->map, 0, sizeof(*glyphmap->map)
+	       * FTGL_FONT_GLYPHMAP_CAPACITY);
+	FTGL_FREE(glyphmap);
 }
 
 FTGLDEF ftgl_return_t
 ftgl_font_library_init(void)
 {
+	FT_Error ft_error;
+	if ((ft_error = FT_Init_FreeType(&ftgl_font_library)) != FT_Err_Ok) {
+		return FTGL_FREETYPE_ERROR;
+	}
 
+	return FTGL_NO_ERROR;
 }
 
 FTGLDEF ftgl_font_t *
 ftgl_font_create(void)
 {
+	GLenum gl_error;
+	ftgl_font_t *font;
+	size_t i;
 
+	font = FTGL_MALLOC(sizeof(*font));
+	if (!font) {
+		return NULL;
+	}
+
+	font->count = 1;
+	font->textures = FTGL_MALLOC(sizeof(*font->textures)
+				     * font->count);
+	if (!font->textures) {
+		font->count = 0;
+		FTGL_FREE(font);
+		return NULL;
+	}
+
+	font->tbox = ll_ivec2_create(5,5);
+	font->tbox_yjump = 0;
+
+	font->glyphmap = ftgl_glyphmap_create();
+	if (!font->glyphmap) {
+		FTGL_FREE(font->textures);
+		FTGL_FREE(font);
+		return NULL;
+	}
+
+	glGenTextures(1, font->textures+0);
+	if ((gl_error = glGetError()) != GL_NO_ERROR) {
+		FTGL_FREE(font->textures);
+		ftgl_glyphmap_free(font->glyphmap);
+		FTGL_FREE(font);
+		return NULL;
+	}
+
+	glBindTexture(GL_TEXTURE_2D, font->textures[0]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, FTGL_FONT_ATLAS_WIDTH,
+		     FTGL_FONT_ATLAS_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+	if ((gl_error = glGetError()) != GL_NO_ERROR) {
+		glBindTexture(GL_TEXTURE_2D, 0);
+		FTGL_FREE(font->texture);
+		ftgl_glyphmap_free(font->glyphmap);
+		FTGL_FREE(font);
+		return NULL;
+	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	font->scale = 1.0;
+	font->face = NULL;
+	return font;
 }
 
 FTGLDEF ftgl_return_t
 ftgl_font_bind(ftgl_font_t *font, const char *path)
 {
+	FT_Error ft_error;
 
+	if (font->face) {
+		if ((ft_error = FT_Done_Face(font->face)) != FT_Err_Ok) {
+			return FTGL_FREETYPE_ERROR;
+		}
+
+		font->face = NULL;
+	}
+
+	if ((ft_error = FT_New_Face(ftgl_font_library, path,
+				    0, &font->face)) != FT_Err_Ok) {
+		return FTGL_FREETYPE_ERROR;
+	}
+
+	return FTGL_NO_ERROR;
 }
 
 FTGLDEF ftgl_return_t
 ftgl_font_set_size(ftgl_font_t *font, float size)
 {
+	FT_Error ft_error;
+	FT_Matrix matrix = {
+		(int)((1.0/FTGL_FONT_HRES) * 0x10000L),
+		(int)((0.0)                 * 0x10000L),
+		(int)((0.0)                 * 0x10000L),
+		(int)((1.0)                 * 0x10000L)
+	};
 
+	if (FT_HAS_FIXED_SIZES(font->face)) {
+		return FTGL_FREETYPE_ERROR;
+	} else {
+		ft_error = FT_Set_Char_Size(font->face, ftgl_float_to_F26Dot6(size),
+					    0, FTGL_FONT_DPI * FTGL_FONT_HRES,
+					    FTGL_FONT_DPI);
+		if (ft_error != FT_Err_Ok) {
+			return FTGL_FREETYPE_ERROR;
+		}
+	}
+
+	FT_Size_Metrics metrics = font->face->size->metrics;
+	font->ascender = metrics.ascender >> 6;
+	font->descender = metrics.descender >> 6;
+	font->height = metrics.height >> 6;
+	font->linegap = font->height - font->ascender + font->descender;
+
+	FT_Activate_Size(font->face->size);
+	FT_Set_Transform(font->face, &matrix, NULL);
+	return FTGL_NO_ERROR;
 }
 
 FTGLDEF ftgl_glyph_t *
 ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 {
+	FT_Error ft_error;
+	FT_GlyphSlot slot;
+	ftgl_glyph_t *glyph;
+	ivec4_t glyph_bbox;
 
+	if ((glyph = ftgl_glyphmap_find_glyph(font->glyphmap, codepoint)) != NULL) {
+		return glyph;
+	}
+
+	ft_error = FT_Load_Char(font->face, codepoint, FT_LOAD_RENDER);
+	if (ft_error != FT_Err_Ok) {
+		return NULL;
+	}
+
+	slot = font->face->glyph;
+
+	if (font->tbox.x + slot->bitmap.width >= FTGL_FONT_ATLAS_WIDTH) {
+		font->tbox.y += font->tbox_yjump + 5;
+		font->tbox.x = 5;
+		font->tbox_yjump = 0;
+	}
+
+	if (font->tbox.y + slot->bitmap.rows >= FTGL_FONT_ATLAS_HEIGHT) {
+		return NULL;
+	}
+
+	glyph_bbox = ll_ivec4_create(font->tbox.x, font->tbox.y,
+				     slot->bitmap.width, slot->bitmap.rows);
+	if (ftgl_glyphmap_insert(font->glyphmap, codepoint, glyph_bbox,
+				 slot->bitmap_left, slot->bitmap_top,
+				 ftgl_F26Dot6_to_float(slot->advance.x),
+				 ftgl_F26Dot6_to_float(slot->advance.y)) != FTGL_NO_ERROR) {
+		return NULL;
+	}
+	
+	glyph = ftgl_glyphmap_find_glyph(font->glyphmap, codepoint);
+
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glBindTexture(GL_TEXTURE_2D, font->textures[0]);
+
+	glTexSubImage2D(GL_TEXTURE_2D, 0, font->tbox.x,
+			font->tbox.y, slot->bitmap.width,
+			slot->bitmap.rows, GL_RED, GL_UNSIGNED_BYTE,
+			slot->bitmap.buffer);
+
+	font->tbox.x += slot->bitmap.width + 5;
+	if (slot->bitmap.rows > font->tbox_yjump) {
+		font->tbox_yjump = slot->bitmap.rows;
+	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	return glyph;
 }
 
 FTGLDEF ftgl_glyph_t *
 ftgl_font_find_glyph(ftgl_font_t *font,
 		      uint32_t codepoint)
 {
-
-}
-
-FTGLDEF void
-ftgl_font_render_text(ftgl_font_t *font,
-		       const char *text)
-{
-
+	return ftgl_glyphmap_find_glyph(font->glyphmap, codepoint);
 }
 
 FTGLDEF void
 ftgl_font_free(ftgl_font_t *font)
 {
-
+	glDeleteTextures(font->count, font->textures);
+	FT_Done_Face(font->face);
+	FTGL_FREE(font->textures);
+	ftgl_glyphmap_free(font->glyphmap);
+	font->face = NULL;
+	font->textures = NULL;
+	font->glyphmap = NULL;
+	font->tbox = ll_ivec2_create(0,0);
+	font->tbox_yjump = 0;
+	font->scale = 0.0;
+	FTGL_FREE(font);
 }
 
 #endif /* FTGL_IMPLEMENTATION */
