@@ -289,7 +289,7 @@ ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 static void
 ftgl_glyphlist_free(ftgl_glyphlist_t *glyphlist)
 {
-	ftgl_glyphlist_free(glyphlist->glyph);
+	ftgl_glyph_free(glyphlist->glyph);
 	glyphlist->glyph = NULL;
 	glyphlist->next = NULL;
 	FTGL_FREE(glyphlist);
@@ -307,6 +307,26 @@ ftgl_glyphmap_create(void)
 	memset(glyphmap->map, 0, sizeof(*glyphmap->map)
 	       * FTGL_FONT_GLYPHMAP_CAPACITY);
 	return glyphmap;
+}
+
+static ftgl_glyph_t *
+ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
+			 uint32_t codepoint)
+{
+	ftgl_glyph_t *glyph;
+	ftgl_glyphlist_t *glyphlist;
+	size_t hash;
+
+	hash = codepoint % FTGL_FONT_GLYPHMAP_CAPACITY;
+	glyphlist = glyphmap->map[hash];
+	while (glyphlist != NULL) {
+		glyph = glyphlist->glyph;
+		if (glyph->codepoint == codepoint) {
+			return glyph;
+		}
+		glyphlist = glyphlist->next;
+	}
+	return NULL;
 }
 
 static ftgl_return_t
@@ -334,26 +354,6 @@ ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
 		glyphmap->map[hash] = glyphlist;
 	}
 	return FTGL_NO_ERROR;
-}
-
-static ftgl_glyph_t *
-ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
-			 uint32 codepoint)
-{
-	ftgl_glyph_t *glyph;
-	ftgl_glyphlist_t *glyphlist;
-	size_t hash;
-
-	hash = codepoint % FTGL_FONT_GLYPHMAP_CAPACITY;
-	glyphlist = glyphmap->map[hash];
-	while (glyphlist != NULL) {
-		glyph = glyphlist->glyph;
-		if (glyph->codepoint == codepoint) {
-			return glyph;
-		}
-		glyphlist = glyphlist->next;
-	}
-	return NULL;
 }
 
 static void
@@ -436,7 +436,7 @@ ftgl_font_create(void)
 		     FTGL_FONT_ATLAS_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
 	if ((gl_error = glGetError()) != GL_NO_ERROR) {
 		glBindTexture(GL_TEXTURE_2D, 0);
-		FTGL_FREE(font->texture);
+		FTGL_FREE(font->textures);
 		ftgl_glyphmap_free(font->glyphmap);
 		FTGL_FREE(font);
 		return NULL;
