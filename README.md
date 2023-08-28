@@ -1,2 +1,2 @@
-![FreeTypeGL Logo](freetype-logo.png)
+![FreeTypeGL Logo](freetypegl-logo.png)
 
