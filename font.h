@@ -208,9 +208,9 @@ FTGLDEF ftgl_glyph_t *
 ftgl_font_find_glyph(ftgl_font_t *font,
 		      uint32_t codepoint);
 
-FTGLDEF void
-ftgl_font_render_text(ftgl_font_t *font,
-		       const char *text);
+FTGLDEF vec2_t
+ftgl_font_string_dimensions(const char *source,
+			    ftgl_font_t *font);
 
 FTGLDEF void
 ftgl_font_free(ftgl_font_t *font);
@@ -253,7 +253,7 @@ ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 static void
 ftgl_glyph_free(ftgl_glyph_t *glyph)
 {
-	glyph->bbox = ll_ivec4_create(0,0,0,0);
+	glyph->bbox = ll_ivec4_create4i(0,0,0,0);
 	glyph->codepoint = 0;
 	glyph->offset_x = 0;
 	glyph->offset_y = 0;
@@ -409,7 +409,7 @@ ftgl_font_create(void)
 		return NULL;
 	}
 
-	font->tbox = ll_ivec2_create(5,5);
+	font->tbox = ll_ivec2_create2i(5,5);
 	font->tbox_yjump = 0;
 
 	font->glyphmap = ftgl_glyphmap_create();
@@ -531,7 +531,7 @@ ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 		return NULL;
 	}
 
-	glyph_bbox = ll_ivec4_create(font->tbox.x, font->tbox.y,
+	glyph_bbox = ll_ivec4_create4i(font->tbox.x, font->tbox.y,
 				     slot->bitmap.width, slot->bitmap.rows);
 	if (ftgl_glyphmap_insert(font->glyphmap, codepoint, glyph_bbox,
 				 slot->bitmap_left, slot->bitmap_top,
@@ -562,9 +562,32 @@ ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 
 FTGLDEF ftgl_glyph_t *
 ftgl_font_find_glyph(ftgl_font_t *font,
-		      uint32_t codepoint)
+		     uint32_t codepoint)
 {
 	return ftgl_glyphmap_find_glyph(font->glyphmap, codepoint);
+}
+
+FTGLDEF vec2_t
+ftgl_font_string_dimensions(const char *source,
+			    ftgl_font_t *font)
+{
+	vec2_t vec;
+	const char *p;
+	ftgl_glyph_t *glyph;
+
+	vec = ll_vec2_origin();
+	p = source;
+	while (*p++ != '\0') {
+		glyph = ftgl_font_find_glyph(font, *p);
+		if (!glyph) {
+			return vec;
+		}
+		vec.x += glyph->advance_x;
+		if (vec.y < glyph->advance_y)
+			vec.y = glyph->advance_y;
+	}
+
+	return vec;
 }
 
 FTGLDEF void
@@ -577,7 +600,7 @@ ftgl_font_free(ftgl_font_t *font)
 	font->face = NULL;
 	font->textures = NULL;
 	font->glyphmap = NULL;
-	font->tbox = ll_ivec2_create(0,0);
+	font->tbox = ll_ivec2_create2i(0,0);
 	font->tbox_yjump = 0;
 	font->scale = 0.0;
 	FTGL_FREE(font);
