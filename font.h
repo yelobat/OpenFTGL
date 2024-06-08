@@ -1,9 +1,11 @@
 /**
  * @author: wwotz
- *
+ * 
  * @description: Use FreeType with OpenGL to render text using a single
  * texture buffer. This project was inspired by rougier's freetype-gl
- * repository found at: https://github.com/rougier/freetype-gl
+ * repository found at: https://github.com/rougier/freetype-gl. This
+ * project adapts the implementation seen in this repository with the
+ * idea to enclose it inside of a single header file, similar to stb.
  *
  * @instructions: Add #FTGL_IMPLEMENTATION to the start of the
  * implementation file in order to add the implementation code
@@ -21,6 +23,7 @@
 #include FT_TRUETYPE_TABLES_H
 
 #include <GL/glew.h>
+#include <float.h>
 
 #include "linear.h"
 
@@ -38,9 +41,10 @@ extern FT_Library ftgl_font_library;
 #endif /* FTGLSTATIC */
 #endif /* FTGLDEF */
 
-#if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC) || !defined(FTGL_FREE)
+#if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC) || !defined(FTGL_CALLOC) || !defined(FTGL_FREE)
 #define FTGL_MALLOC(sz) malloc(sz)
 #define FTGL_REALLOC(x, newsz) realloc(x, newsz)
+#define FTGL_CALLOC(nmemb, size) calloc(nmemb, size)
 #define FTGL_FREE(x) free(x)
 #endif
 
@@ -108,6 +112,11 @@ typedef struct ftgl_glyphmap_t {
 
 #define FTGL_FONT_ATLAS_WIDTH  1024
 #define FTGL_FONT_ATLAS_HEIGHT 1024
+
+typedef enum ftgl_rendermode_t {
+	FTGL_RENDERMODE_NORMAL,
+	FTGL_RENDERMODE_SDF,
+} ftgl_rendermode_t;
 
 typedef struct ftgl_font_t {
 	/**
@@ -187,6 +196,12 @@ typedef struct ftgl_font_t {
 	 * A hashmap containing glyph information.
 	 */
 	ftgl_glyphmap_t *glyphmap;
+
+	/**
+	 * FTGL_RENDERMODE_NORMAL - Normal Bitmap rendering
+	 * FTGL_RENDERMODE_SDF    - Signed Distance Field (SDF) rendering
+	 */
+	ftgl_rendermode_t rendermode;
 } ftgl_font_t;
 
 FTGLDEF ftgl_return_t
@@ -201,12 +216,34 @@ ftgl_font_bind(ftgl_font_t *font, const char *path);
 FTGLDEF ftgl_return_t
 ftgl_font_set_size(ftgl_font_t *font, float size);
 
+FTGLDEF void
+ftgl_computegradient(double *img, int w, int h, double *gx, double *gy);
+
+FTGLDEF double
+ftgl_edgedf(double gx, double gy, double a);
+
+FTGLDEF double
+ftgl_distaa3(double *img, double *gximg, double *gyimg, int w,
+	     int c, int xc, int yc, int xi, int yi);
+
+FTGLDEF void
+ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h,
+	    short *distx, short *disty, double *dist);
+
+FTGLDEF double *
+ftgl_distance_mapd(double *data, unsigned int width,
+		   unsigned int height);
+
+FTGLDEF unsigned char *
+ftgl_distance_mapb(unsigned char *img, unsigned int width,
+		   unsigned int height);
+
 FTGLDEF ftgl_glyph_t *
 ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint);
 
 FTGLDEF ftgl_glyph_t *
 ftgl_font_find_glyph(ftgl_font_t *font,
-		      uint32_t codepoint);
+		     uint32_t codepoint);
 
 FTGLDEF vec2_t
 ftgl_font_string_dimensions(const char *source,
@@ -393,12 +430,13 @@ ftgl_font_create(void)
 {
 	GLenum gl_error;
 	ftgl_font_t *font;
-	size_t i;
 
 	font = FTGL_MALLOC(sizeof(*font));
 	if (!font) {
 		return NULL;
 	}
+
+	font->rendermode = FTGL_RENDERMODE_NORMAL;
 
 	font->count = 1;
 	font->textures = FTGL_MALLOC(sizeof(*font->textures)
@@ -502,6 +540,614 @@ ftgl_font_set_size(ftgl_font_t *font, float size)
 	return FTGL_NO_ERROR;
 }
 
+FTGLDEF void
+ftgl_computegradient(double *img, int w, int h, double *gx, double *gy)
+{
+	int i, j, k;
+	double glength;
+#define SQRT2 1.4142136
+	// Avoid edges where the kernels would spill over
+	for (i = 1; i < h - 1; i++) {
+		for (j = 1; j < w - 1; j++) {
+			k = i*w + j;
+			// Compute gradient for edge pixels only
+			if ((img[k] > 0.0) && (img[k] < 1.0)) {
+				gx[k] = -img[k-w-1] - SQRT2*img[k-1] - img[k+w-1] + img[k-w+1]
+					+ SQRT2*img[k+1] + img[k+w+1];
+				gy[k] = -img[k-w-1] - SQRT2*img[k-w] - img[k-w+1] + img[k+w-1]
+					+ SQRT2*img[k+w] + img[k+w+1];
+				glength = gx[k]*gx[k] + gy[k]*gy[k];
+				// Avoid division by zero
+				if (glength > 0.0) {
+					glength = sqrt(glength);
+					gx[k] = gx[k] / glength;
+					gy[k] = gy[k] / glength;
+				}
+			}
+		}
+	}
+#undef SQRT2
+}
+
+FTGLDEF double
+ftgl_edgedf(double gx, double gy, double a)
+{
+	double df, glength, temp, a1;
+
+	// Either
+	// A) gu or gv are zero, or
+	// B) both
+	if ((gx == 0) || (gy == 0)) {
+		df = 0.5-a;
+	} else {
+		glength = sqrt(gx*gx + gy*gy);
+		if (glength > 0) {
+			gx = gx/glength;
+			gy = gy/glength;
+		}
+
+		/* Everything is symmetric wrt sign and transposition
+		 * so move to first octant (gx >= 0, gy >= 0, gx >= gy) to
+		 * avoid handling all possible edge cases
+		 */
+		gx = fabs(gx);
+		gy = fabs(gy);
+		if (gx < gy) {
+			temp = gx;
+			gx = gy;
+			gy = temp;
+		}
+
+		a1 = 0.5*gy/gx;
+		// 0 <= a < a1
+		if (a < a1) {
+			df = 0.5*(gx + gy) - sqrt(2.0 * gx * gy * a);
+		} else if (a < (1.0-a1)) {
+			// a1 <= a <= 1 - a1
+			df = (0.5-a) * gx;
+		} else {
+			// 1-a1 < a <= 1
+			df = -0.5 * (gx + gy) + sqrt(2.0 * gx * gy * (1.0-a));
+		}
+	}
+
+	return df;
+}
+
+FTGLDEF double
+ftgl_distaa3(double *img, double *gximg, double *gyimg, int w,
+	     int c, int xc, int yc, int xi, int yi)
+{
+	double di, df, dx, dy, gx, gy, a;
+	int closest;
+
+	// Index to the edge pixel pointed to from c
+	closest = c-xc-yc*w;
+
+	// Grayscale value at the edge pixel
+	a = img[closest];
+
+	// X gradient component at the edge pixel
+	gx = gximg[closest];
+
+	// Y gradient component at the edge pixel
+	gy = gyimg[closest];
+
+	if (a > 1.0) a = 1.0;
+	
+	// Clip grayscale values outside the range [0, 1]
+	if (a < 0.0) a = 0.0;
+
+	// Not an object pixel, return "very far" ("don't know yet")
+	if (a == 0.0) return 1000000.0;
+
+	dx = (double) xi;
+	dy = (double) yi;
+
+	// Length of integer vector, like a traditional EDT
+	di = sqrt(dx*dx + dy*dy);
+	if (di == 0) {
+		//Use local gradient only at edges
+		// Estimate based on local gradient only
+		df = ftgl_edgedf(gx, gy, a);
+	} else {
+		// Estimate gradient based on direction to edge (accurate for large di)
+		df = ftgl_edgedf(dx, dy, a);
+	}
+
+	// Same metric as ftgl_edtaa3, except at edges (where di = 0)
+	return di + df; 
+}
+
+// Shorthand macro: add ubiquitous parameters dist, gx, gy, img and w and call distaa3()
+#define DISTAA(c,xc,yc,xi,yi) (ftgl_distaa3(img, gx, gy, w, c, xc, yc, xi, yi))
+
+FTGLDEF void
+ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h,
+	    short *distx, short *disty, double *dist)
+{
+	int x, y, i, c;
+	int offset_u, offset_ur, offset_r, offset_rd,
+		offset_d, offset_dl, offset_l, offset_lu;
+	double olddist, newdist;
+	int cdistx, cdisty, newdistx, newdisty;
+	int changed;
+	double epsilon = 1e-3;
+
+	/* Initialize index offsets for the current image width */
+	offset_u = -w;
+	offset_ur = -w+1;
+	offset_r = 1;
+	offset_rd = w+1;
+	offset_d = w;
+	offset_dl = w-1;
+	offset_l = -1;
+	offset_lu = -w-1;
+
+	/* Initialize the distance images */
+	for(i=0; i<w*h; i++) {
+		// At first, all pixels point to
+		// themselves as the closest known.
+		distx[i] = 0;
+		disty[i] = 0; 
+		if(img[i] <= 0.0) {
+			// Big value, means "not set yet"
+			dist[i]= 1000000.0; 
+		} else if (img[i]<1.0) {
+			// Gradient-assisted estimate
+			dist[i] = ftgl_edgedf(gx[i], gy[i], img[i]); 
+		} else {
+			dist[i]= 0.0; // Inside the object
+		}
+	}
+
+	/* Perform the transformation */
+	do {
+		changed = 0;
+
+		/* Scan rows, except first row */
+		for(y=1; y<h; y++) {
+
+			/* move index to leftmost pixel of current row */
+			i = y*w;
+
+			/* scan right, propagate distances from above & left */
+
+			/* Leftmost pixel is special, has no left neighbors */
+			olddist = dist[i];
+
+			// If non-zero distance or not set yet
+			if(olddist > 0)  {
+				c = i + offset_u; // Index of candidate for testing
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx;
+				newdisty = cdisty+1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_ur;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx-1;
+				newdisty = cdisty+1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+			i++;
+
+			/* Middle pixels have all neighbors */
+			for(x=1; x<w-1; x++, i++) {
+				olddist = dist[i];
+				if(olddist <= 0) continue; // No need to update further
+
+				c = i+offset_l;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx+1;
+				newdisty = cdisty;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_lu;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx+1;
+				newdisty = cdisty+1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_u;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx;
+				newdisty = cdisty+1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_ur;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx-1;
+				newdisty = cdisty+1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+
+			/* Rightmost pixel of row is special, has no right neighbors */
+			olddist = dist[i];
+
+			// If not already zero distance
+			if(olddist > 0) { 
+				c = i+offset_l;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx+1;
+				newdisty = cdisty;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_lu;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx+1;
+				newdisty = cdisty+1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_u;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx;
+				newdisty = cdisty+1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+
+			/* Move index to second rightmost pixel of current row. */
+			/* Rightmost pixel is skipped, it has no right neighbor. */
+			i = y*w + w-2;
+
+			/* scan left, propagate distance from right */
+			for(x=w-2; x>=0; x--, i--) {
+				olddist = dist[i];
+				if(olddist <= 0) continue; // Already zero distance
+
+				c = i+offset_r;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx-1;
+				newdisty = cdisty;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+		}
+
+		/* Scan rows in reverse order, except last row */
+		for(y=h-2; y>=0; y--) {
+			/* move index to rightmost pixel of current row */
+			i = y*w + w-1;
+
+			/* Scan left, propagate distances from below & right */
+
+			/* Rightmost pixel is special, has no right neighbors */
+			olddist = dist[i];
+
+			// If not already zero distance 
+			if(olddist > 0) {
+				c = i+offset_d;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx;
+				newdisty = cdisty-1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_dl;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx+1;
+				newdisty = cdisty-1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+			i--;
+
+			/* Middle pixels have all neighbors */
+			for(x=w-2; x>0; x--, i--) {
+				olddist = dist[i];
+				if(olddist <= 0) continue; // Already zero distance
+
+				c = i+offset_r;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx-1;
+				newdisty = cdisty;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_rd;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx-1;
+				newdisty = cdisty-1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_d;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx;
+				newdisty = cdisty-1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_dl;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx+1;
+				newdisty = cdisty-1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+			/* Leftmost pixel is special, has no left neighbors */
+			olddist = dist[i];
+					
+			// If not already zero distance
+			if(olddist > 0) { 
+				c = i+offset_r;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx-1;
+				newdisty = cdisty;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_rd;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx-1;
+				newdisty = cdisty-1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					olddist=newdist;
+					changed = 1;
+				}
+
+				c = i+offset_d;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx;
+				newdisty = cdisty-1;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+
+			/* Move index to second leftmost pixel of current row. */
+			/* Leftmost pixel is skipped, it has no left neighbor. */
+			i = y*w + 1;
+			for(x=1; x<w; x++, i++) {
+				/* scan right, propagate distance from left */
+				olddist = dist[i];
+				if(olddist <= 0) continue; // Already zero distance
+
+				c = i+offset_l;
+				cdistx = distx[c];
+				cdisty = disty[c];
+				newdistx = cdistx+1;
+				newdisty = cdisty;
+				newdist = DISTAA(c, cdistx, cdisty, newdistx, newdisty);
+				if(newdist < olddist-epsilon) {
+					distx[i]=newdistx;
+					disty[i]=newdisty;
+					dist[i]=newdist;
+					changed = 1;
+				}
+			}
+		}
+	}
+	while(changed); // Sweep until no more updates are made
+
+	/* The transformation is completed. */
+}
+
+FTGLDEF double *
+ftgl_distance_mapd(double *data, unsigned int width,
+		   unsigned int height)
+{
+	short *xdist = FTGL_MALLOC(width * height * sizeof(*xdist));
+	short *ydist = FTGL_MALLOC(width * height * sizeof(*ydist));
+	double *gx = FTGL_MALLOC(width * height * sizeof(*gx));
+	double *gy = FTGL_MALLOC(width * height * sizeof(*gy));
+	double *outside = FTGL_MALLOC(width * height * sizeof(*outside));
+	double *inside = FTGL_MALLOC(width * height * sizeof(*inside));
+	double vmin = DBL_MAX;
+	unsigned int i;
+
+	// Compute outside = edtaa3(bitmap); % Transform background (0's)
+	ftgl_computegradient(data, width, height, gx, gy);
+	ftgl_edtaa3(data, gx, gy, width, height, xdist, ydist, outside);
+	for (i = 0; i < width * height; i++) {
+		if (outside[i] < 0.0) outside[i] = 0.0;
+	}
+
+	// Compute inside = ftgl_edtaa3(1 - bitmap); % Transform background (1's)
+	memset(gx, 0, sizeof(*gx)*width*height);
+	memset(gy, 0, sizeof(*gy)*width*height);
+	for (i = 0; i < width * height; i++) {
+		data[i] = 1 - data[i];
+	}
+
+	ftgl_computegradient(data, width, height, gx, gy);
+	ftgl_edtaa3(data, gx, gy, width, height, xdist, ydist, inside);
+	for (i = 0; i < width * height; i++) {
+		if (inside[i] < 0.0) {
+			inside[i] =  0.0;
+		}
+	}
+
+	// distmap = outside - inside % Bipolar distance field
+	for (i = 0; i < width * height; i++) {
+		outside[i] -= inside[i];
+		if (outside[i] < vmin) {
+			vmin = outside[i];
+		}
+	}
+
+	vmin = fabs(vmin);
+
+	for (i = 0; i < width * height; i++) {
+		double v = outside[i];
+		if (v < -vmin) outside[i] = -vmin;
+		else if (v > +vmin) outside[i] = +vmin;
+		data[i] = (outside[i] + vmin) / (2 * vmin);
+	}
+
+	FTGL_FREE(xdist);
+	FTGL_FREE(ydist);
+	FTGL_FREE(gx);
+	FTGL_FREE(gy);
+	FTGL_FREE(outside);
+	FTGL_FREE(inside);
+	return data;
+}
+
+FTGLDEF unsigned char *
+ftgl_distance_mapb(unsigned char *img, unsigned int width,
+		   unsigned int height)
+{
+	double *data = FTGL_CALLOC(width * height, sizeof(*data));
+	unsigned char *out = FTGL_MALLOC(width * height * sizeof(*out));
+	unsigned int i;
+
+	// find minimum and maximum values
+	double img_min = DBL_MAX;
+	double img_max = DBL_MIN;
+
+	for (i = 0; i < width * height; i++) {
+		double v = img[i];
+		data[i] = v;
+		if (v > img_max) img_max = v;
+		if (v < img_min) img_min = v;
+	}
+
+	// Map values from 0 - 255 to 0.0 - 1.0
+	for (i = 0; i < width * height; i++)
+		data[i] = (img[i]-img_min)/img_max;
+
+	data = ftgl_distance_mapd(data, width, height);
+
+	for (i = 0; i < width * height; i++)
+		out[i] = (unsigned char)(255 * (1  - data[i]));
+	
+	FTGL_FREE(data);
+	return out;
+}
+
 FTGLDEF ftgl_glyph_t *
 ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 {
@@ -509,6 +1155,13 @@ ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 	FT_GlyphSlot slot;
 	ftgl_glyph_t *glyph;
 	ivec4_t glyph_bbox;
+	size_t src_w, src_h, tgt_w, tgt_h;
+
+#define FTGL_GLYPH_OFFSET (1)
+	ivec4_t padding = ll_ivec4_create4i( FTGL_GLYPH_OFFSET,
+					     FTGL_GLYPH_OFFSET,
+					     FTGL_GLYPH_OFFSET,
+					     FTGL_GLYPH_OFFSET);
 
 	if ((glyph = ftgl_glyphmap_find_glyph(font->glyphmap, codepoint)) != NULL) {
 		return glyph;
@@ -522,39 +1175,64 @@ ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 	slot = font->face->glyph;
 
 	if (font->tbox.x + slot->bitmap.width >= FTGL_FONT_ATLAS_WIDTH) {
-		font->tbox.y += font->tbox_yjump + 5;
-		font->tbox.x = 5;
+		font->tbox.y += font->tbox_yjump + FTGL_GLYPH_OFFSET;
+		font->tbox.x = FTGL_GLYPH_OFFSET;
 		font->tbox_yjump = 0;
 	}
 
-	if (font->tbox.y + slot->bitmap.rows >= FTGL_FONT_ATLAS_HEIGHT) {
+	src_w = slot->bitmap.width;
+	src_h = slot->bitmap.rows;
+
+	tgt_w = src_w + padding.x + padding.z;
+	tgt_h = src_h + padding.y + padding.w;
+
+	if (font->tbox.y + tgt_h >= FTGL_FONT_ATLAS_HEIGHT) {
 		return NULL;
 	}
 
 	glyph_bbox = ll_ivec4_create4i(font->tbox.x, font->tbox.y,
-				     slot->bitmap.width, slot->bitmap.rows);
+				       tgt_w, tgt_h);
 	if (ftgl_glyphmap_insert(font->glyphmap, codepoint, glyph_bbox,
 				 slot->bitmap_left, slot->bitmap_top,
 				 ftgl_F26Dot6_to_float(slot->advance.x),
 				 ftgl_F26Dot6_to_float(slot->advance.y)) != FTGL_NO_ERROR) {
 		return NULL;
 	}
-	
+
 	glyph = ftgl_glyphmap_find_glyph(font->glyphmap, codepoint);
 
+	unsigned char *buffer = FTGL_CALLOC(tgt_w * tgt_h, sizeof(*buffer));
+	unsigned char *dst_ptr = buffer + (padding.x * tgt_w + padding.w);
+	unsigned char *src_ptr = slot->bitmap.buffer;
+
+	for (size_t i = 0; i < src_h; i++) {
+		memcpy(dst_ptr, src_ptr, slot->bitmap.width);
+		dst_ptr += tgt_w;
+		src_ptr += slot->bitmap.pitch;
+	}
+
+	if (font->rendermode == FTGL_RENDERMODE_SDF) {
+		unsigned char *sdf = ftgl_distance_mapb(buffer, tgt_w, tgt_h);
+		FTGL_FREE(buffer);
+		buffer = sdf;
+	}
+	
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glBindTexture(GL_TEXTURE_2D, font->textures[0]);
 
 	glTexSubImage2D(GL_TEXTURE_2D, 0, font->tbox.x,
-			font->tbox.y, slot->bitmap.width,
-			slot->bitmap.rows, GL_RED, GL_UNSIGNED_BYTE,
-			slot->bitmap.buffer);
+			font->tbox.y, tgt_w, tgt_h,
+			GL_RED, GL_UNSIGNED_BYTE,
+			buffer);
+	FTGL_FREE(buffer);
 
-	font->tbox.x += slot->bitmap.width + 5;
-	if (slot->bitmap.rows > font->tbox_yjump) {
-		font->tbox_yjump = slot->bitmap.rows;
+	font->tbox.x += tgt_w + FTGL_GLYPH_OFFSET;
+	if (tgt_h > font->tbox_yjump) {
+		font->tbox_yjump = tgt_h;
 	}
-
+	
+#undef FTGL_GLYPH_OFFSET
+	
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	return glyph;
@@ -577,14 +1255,15 @@ ftgl_font_string_dimensions(const char *source,
 
 	vec = ll_vec2_origin();
 	p = source;
-	while (*p++ != '\0') {
+
+	vec.y = font->height;
+	while (*p != '\0') {
 		glyph = ftgl_font_find_glyph(font, *p);
 		if (!glyph) {
 			return vec;
 		}
 		vec.x += glyph->advance_x;
-		if (vec.y < glyph->advance_y)
-			vec.y = glyph->advance_y;
+		p++;
 	}
 
 	return vec;
