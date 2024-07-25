@@ -41,7 +41,8 @@ extern FT_Library ftgl_font_library;
 #endif /* FTGLSTATIC */
 #endif /* FTGLDEF */
 
-#if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC) || !defined(FTGL_CALLOC) || !defined(FTGL_FREE)
+#if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC) \
+	|| !defined(FTGL_CALLOC) || !defined(FTGL_FREE)
 #define FTGL_MALLOC(sz) malloc(sz)
 #define FTGL_REALLOC(x, newsz) realloc(x, newsz)
 #define FTGL_CALLOC(nmemb, size) calloc(nmemb, size)
@@ -203,6 +204,17 @@ typedef struct ftgl_font_t {
 	 */
 	ftgl_rendermode_t rendermode;
 } ftgl_font_t;
+
+typedef struct ftgl_font_node_t {
+	char *name;
+	ftgl_font_t *font;
+} ftgl_font_node_t;
+
+typedef struct ftgl_font_manager_t {
+	size_t size;
+	size_t capacity;
+	ftgl_font_node_t **nodes;
+} ftgl_font_manager_t;
 
 FTGLDEF ftgl_return_t
 ftgl_font_library_init(void);
@@ -412,6 +424,38 @@ ftgl_glyphmap_free(ftgl_glyphmap_t *glyphmap)
 	memset(glyphmap->map, 0, sizeof(*glyphmap->map)
 	       * FTGL_FONT_GLYPHMAP_CAPACITY);
 	FTGL_FREE(glyphmap);
+}
+
+// meiyan hash function
+// Source: http://www.sanmayce.com/Fastest_Hash/
+static inline uint32_t
+ftgl_string_hash(const char *s, size_t len)
+{
+	uint32_t hash = 0x811c9dc5;
+	while (len >= 8) {
+		hash = (hash ^ ((((*(uint32_t *) s) << 5) | ((*(uint32_t *) s) >> 27))
+				^ *(uint32_t *)(s + 4))) * 0xad3e7;
+		len -= 8;
+		s += 8;
+	}
+
+	if (len & 4) {
+		hash = (hash ^ (uint16_t *) s) * 0xad3e7;
+		s += 2;
+		hash = (hash ^ (uint16_t *) s) * 0xad3e7;
+		s += 2;
+	}
+
+	if (len & 2) {
+		hash = (hash ^ (uint16_t *) s) * 0xad3e7;
+		s += 2;
+	}
+
+	if (len & 1) {
+		hash = (hash ^ *key) * 0xad3e7;
+	}
+
+	return hash ^ (hash >> 16);
 }
 
 FTGLDEF ftgl_return_t
