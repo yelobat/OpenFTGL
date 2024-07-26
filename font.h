@@ -24,6 +24,7 @@
 
 #include <GL/glew.h>
 #include <float.h>
+#include <stdint.h>
 
 #include "linear.h"
 
@@ -42,16 +43,18 @@ extern FT_Library ftgl_font_library;
 #endif /* FTGLDEF */
 
 #if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC) \
-	|| !defined(FTGL_CALLOC) || !defined(FTGL_FREE)
+	|| !defined(FTGL_CALLOC) || !defined(FTGL_FREE) || !defined(FTGL_STRDUP)
 #define FTGL_MALLOC(sz) malloc(sz)
 #define FTGL_REALLOC(x, newsz) realloc(x, newsz)
 #define FTGL_CALLOC(nmemb, size) calloc(nmemb, size)
+#define FTGL_STRDUP(s) strdup(s)
 #define FTGL_FREE(x) free(x)
 #endif
 
 typedef enum ftgl_return_t {
 	FTGL_NO_ERROR = 0,
 	FTGL_MEMORY_ERROR,
+	FTGL_ARGUMENT_ERROR,
 	FTGL_FREETYPE_ERROR,
 } ftgl_return_t;
 
@@ -121,15 +124,10 @@ typedef enum ftgl_rendermode_t {
 
 typedef struct ftgl_font_t {
 	/**
-	 * Stores all the textures for which
+	 * Stores the texture for which
 	 * the glyphs are stored inside of.
 	 */
-	GLuint *textures;
-
-	/**
-	 * The number of allocated textures for the glyphs.
-	 */
-	GLsizei count;
+	GLuint texture;
 
 	/**
 	 * A face structure used to load glyphs,
@@ -205,19 +203,15 @@ typedef struct ftgl_font_t {
 	ftgl_rendermode_t rendermode;
 } ftgl_font_t;
 
-typedef struct ftgl_font_node_t {
-	char *name;
-	ftgl_font_t *font;
-} ftgl_font_node_t;
-
-typedef struct ftgl_font_manager_t {
-	size_t size;
-	size_t capacity;
-	ftgl_font_node_t **nodes;
-} ftgl_font_manager_t;
-
 FTGLDEF ftgl_return_t
 ftgl_font_library_init(void);
+
+FTGLDEF ftgl_return_t
+ftgl_font_manager_insert(const char *name, const char *path,
+			 size_t ptsize);
+
+FTGLDEF ftgl_font_t *
+ftgl_font_manager_find(const char *name);
 
 FTGLDEF ftgl_font_t *
 ftgl_font_create(void);
@@ -264,7 +258,26 @@ ftgl_font_string_dimensions(const char *source,
 FTGLDEF void
 ftgl_font_free(ftgl_font_t *font);
 
+FTGLDEF void
+ftgl_font_library_free(void);
+
 #ifdef FTGL_IMPLEMENTATION
+
+typedef struct ftgl_font_node_t {
+	char *name;
+	ftgl_font_t *font;
+} ftgl_font_node_t;
+
+struct {
+	size_t size;
+	size_t capacity;
+	ftgl_font_node_t **nodes;
+} ftgl_font_manager;
+
+#define FTGL_FONT_MANAGER_CAPACITY (2)
+#define FTGL_FONT_MANAGER_RRATIO (0.8)
+#define FTGL_FONT_MANAGER_RESIZEP() \
+	((ftgl_font_manager.size / (float) ftgl_font_manager.capacity) >= FTGL_FONT_MANAGER_RRATIO)
 
 FT_Library ftgl_font_library;
 
@@ -440,33 +453,187 @@ ftgl_string_hash(const char *s, size_t len)
 	}
 
 	if (len & 4) {
-		hash = (hash ^ (uint16_t *) s) * 0xad3e7;
+		hash = (hash ^ *(uint16_t *) s) * 0xad3e7;
 		s += 2;
-		hash = (hash ^ (uint16_t *) s) * 0xad3e7;
+		hash = (hash ^ *(uint16_t *) s) * 0xad3e7;
 		s += 2;
 	}
 
 	if (len & 2) {
-		hash = (hash ^ (uint16_t *) s) * 0xad3e7;
+		hash = (hash ^ *(uint16_t *) s) * 0xad3e7;
 		s += 2;
 	}
 
 	if (len & 1) {
-		hash = (hash ^ *key) * 0xad3e7;
+		hash = (hash ^ *s) * 0xad3e7;
 	}
 
 	return hash ^ (hash >> 16);
+}
+
+static ftgl_return_t
+ftgl_font_manager_init(void)
+{
+	ftgl_font_manager.size = 0;
+	ftgl_font_manager.capacity = FTGL_FONT_MANAGER_CAPACITY;
+	ftgl_font_manager.nodes = FTGL_CALLOC(ftgl_font_manager.capacity,
+					      sizeof(*ftgl_font_manager.nodes));
+	if (!ftgl_font_manager.nodes) {
+		return FTGL_MEMORY_ERROR;
+	}
+
+	return FTGL_NO_ERROR;
 }
 
 FTGLDEF ftgl_return_t
 ftgl_font_library_init(void)
 {
 	FT_Error ft_error;
+	ftgl_return_t ret;
 	if ((ft_error = FT_Init_FreeType(&ftgl_font_library)) != FT_Err_Ok) {
 		return FTGL_FREETYPE_ERROR;
 	}
 
+	if ((ret = ftgl_font_manager_init()) != FTGL_NO_ERROR) {
+		return ret;
+	}
 	return FTGL_NO_ERROR;
+}
+
+static ftgl_font_node_t *
+ftgl_font_node_create(const char *name, const char *path,
+		      size_t ptsize)
+{
+	ftgl_return_t ret;
+	ftgl_font_node_t *font_node;
+	font_node = FTGL_MALLOC(sizeof(*font_node));
+	if (!font_node) {
+		return NULL;
+	}
+
+	font_node->name = FTGL_STRDUP(name);
+	if (!font_node->name) {
+		FTGL_FREE(font_node);
+		return NULL;
+	}
+
+	font_node->font = ftgl_font_create();
+	if (!font_node->font) {
+		FTGL_FREE(font_node->name);
+		FTGL_FREE(font_node);
+		return NULL;
+	}
+
+	ret = ftgl_font_bind(font_node->font, path);
+	if (ret != FTGL_NO_ERROR) {
+		FTGL_FREE(font_node->name);
+		ftgl_font_free(font_node->font);
+		FTGL_FREE(font_node);
+		return NULL;
+	}
+
+	ret = ftgl_font_set_size(font_node->font, ptsize);
+	if (ret != FTGL_NO_ERROR) {
+		FTGL_FREE(font_node->name);
+		ftgl_font_free(font_node->font);
+		FTGL_FREE(font_node);
+		return NULL;
+	}
+
+	return font_node;
+}
+
+static ftgl_return_t
+ftgl_font_manager_resize(void)
+{
+	size_t new_capacity, i, j;
+	ftgl_font_node_t **new_nodes;
+	uint32_t idx0, idx1, real_idx;
+	new_capacity = ftgl_font_manager.capacity << 1;
+	new_nodes = FTGL_CALLOC(new_capacity, sizeof(*new_nodes));
+	if (!new_nodes) {
+		return FTGL_MEMORY_ERROR;
+	}
+
+	for (i = 0; i < ftgl_font_manager.capacity; i++) {
+		ftgl_font_node_t *font_node = ftgl_font_manager.nodes[i];
+		if (!font_node) continue;
+		idx0 = ftgl_string_hash(font_node->name, strlen(font_node->name)) & (new_capacity - 1);
+		idx1 = idx0 | 1;
+
+		for (j = 0; j <= new_capacity; j++) {
+			real_idx = (idx0 + idx1 * j) & (new_capacity - 1);
+			if (!new_nodes[real_idx]) continue;
+			new_nodes[real_idx] = font_node;
+			break;
+		}
+	}
+
+	FTGL_FREE(ftgl_font_manager.nodes);
+	ftgl_font_manager.nodes = new_nodes;
+	ftgl_font_manager.capacity = new_capacity;
+	return FTGL_NO_ERROR;
+}
+
+FTGLDEF ftgl_return_t
+ftgl_font_manager_insert(const char *name, const char *path,
+			 size_t ptsize)
+{
+	ftgl_return_t ret;
+	size_t idx0, idx1, real_idx, i;
+	ftgl_font_node_t *font_node, *new_node;
+	if (!name || strlen(name) <= 0 || !path) {
+		return FTGL_ARGUMENT_ERROR;
+	}
+	
+	if (FTGL_FONT_MANAGER_RESIZEP()) {
+		if ((ret = ftgl_font_manager_resize()) != FTGL_NO_ERROR) {
+			return ret;
+		}
+	}
+
+	new_node = ftgl_font_node_create(name, path, ptsize);
+	if (!new_node) {
+		return FTGL_MEMORY_ERROR;
+	}
+
+	idx0 = ftgl_string_hash(name, strlen(name)) & (ftgl_font_manager.capacity - 1);
+	idx1 = idx0 | 1;
+	for (i = 0; i <= ftgl_font_manager.capacity; i++) {
+		real_idx = (idx0 + idx1 * i) & (ftgl_font_manager.capacity - 1);
+		font_node = ftgl_font_manager.nodes[real_idx];
+		if (font_node) {
+			if (strcmp(font_node->name, name) == 0)
+				return FTGL_NO_ERROR;
+			continue;
+		}
+
+		ftgl_font_manager.nodes[real_idx] = new_node;
+		break;
+	}
+
+	ftgl_font_manager.size++;
+	return FTGL_NO_ERROR;
+}
+
+FTGLDEF ftgl_font_t *
+ftgl_font_manager_find(const char *name)
+{
+	ftgl_font_node_t *font_node;
+	size_t idx0, idx1, real_idx, i;
+
+	idx0 = ftgl_string_hash(name, strlen(name));
+	idx0 = idx0 & (ftgl_font_manager.capacity - 1);
+	idx1 = idx0 | 1;
+	for (i = 0; i < ftgl_font_manager.capacity; i++) {
+		real_idx = (idx0 + idx1 * i) & (ftgl_font_manager.capacity - 1);
+		font_node = ftgl_font_manager.nodes[real_idx];
+		if (font_node && strcmp(name, font_node->name) == 0) {
+			return font_node->font;
+		}
+	}
+	
+	return NULL;
 }
 
 FTGLDEF ftgl_font_t *
@@ -482,34 +649,23 @@ ftgl_font_create(void)
 
 	font->rendermode = FTGL_RENDERMODE_NORMAL;
 
-	font->count = 1;
-	font->textures = FTGL_MALLOC(sizeof(*font->textures)
-				     * font->count);
-	if (!font->textures) {
-		font->count = 0;
-		FTGL_FREE(font);
-		return NULL;
-	}
-
 	font->tbox = ll_ivec2_create2i(5,5);
 	font->tbox_yjump = 0;
 
 	font->glyphmap = ftgl_glyphmap_create();
 	if (!font->glyphmap) {
-		FTGL_FREE(font->textures);
 		FTGL_FREE(font);
 		return NULL;
 	}
 
-	glGenTextures(1, font->textures+0);
+	glGenTextures(1, &font->texture);
 	if ((gl_error = glGetError()) != GL_NO_ERROR) {
-		FTGL_FREE(font->textures);
 		ftgl_glyphmap_free(font->glyphmap);
 		FTGL_FREE(font);
 		return NULL;
 	}
 
-	glBindTexture(GL_TEXTURE_2D, font->textures[0]);
+	glBindTexture(GL_TEXTURE_2D, font->texture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -518,7 +674,6 @@ ftgl_font_create(void)
 		     FTGL_FONT_ATLAS_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
 	if ((gl_error = glGetError()) != GL_NO_ERROR) {
 		glBindTexture(GL_TEXTURE_2D, 0);
-		FTGL_FREE(font->textures);
 		ftgl_glyphmap_free(font->glyphmap);
 		FTGL_FREE(font);
 		return NULL;
@@ -1262,7 +1417,7 @@ ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 	}
 	
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glBindTexture(GL_TEXTURE_2D, font->textures[0]);
+	glBindTexture(GL_TEXTURE_2D, font->texture);
 
 	glTexSubImage2D(GL_TEXTURE_2D, 0, font->tbox.x,
 			font->tbox.y, tgt_w, tgt_h,
@@ -1316,17 +1471,44 @@ ftgl_font_string_dimensions(const char *source,
 FTGLDEF void
 ftgl_font_free(ftgl_font_t *font)
 {
-	glDeleteTextures(font->count, font->textures);
+	glDeleteTextures(1, &font->texture);
 	FT_Done_Face(font->face);
-	FTGL_FREE(font->textures);
 	ftgl_glyphmap_free(font->glyphmap);
 	font->face = NULL;
-	font->textures = NULL;
 	font->glyphmap = NULL;
 	font->tbox = ll_ivec2_create2i(0,0);
 	font->tbox_yjump = 0;
 	font->scale = 0.0;
 	FTGL_FREE(font);
+}
+
+static void
+ftgl_font_node_free(ftgl_font_node_t *font_node)
+{
+	FTGL_FREE(font_node->name);
+	ftgl_font_free(font_node->font);
+	FTGL_FREE(font_node);
+}	
+
+static void
+ftgl_font_manager_free(void)
+{
+	size_t i;
+	ftgl_font_node_t *font_node;
+	for (i = 0; i < ftgl_font_manager.capacity; i++) {
+		font_node = ftgl_font_manager.nodes[i];
+		if (font_node) {
+			ftgl_font_node_free(font_node);
+		}
+	}
+	FTGL_FREE(ftgl_font_manager.nodes);
+	memset(&ftgl_font_manager, 0, sizeof(ftgl_font_manager));
+}
+
+FTGLDEF void
+ftgl_font_library_free(void)
+{
+	ftgl_font_manager_free();
 }
 
 #endif /* FTGL_IMPLEMENTATION */
