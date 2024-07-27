@@ -203,6 +203,18 @@ typedef struct ftgl_font_t {
 	ftgl_rendermode_t rendermode;
 } ftgl_font_t;
 
+#define FTGL_STRING_CAPACITY (4)
+
+typedef struct ftgl_string_t {
+	GLfloat width;
+	GLfloat height;
+	char updated;
+	
+	size_t size;
+	size_t capacity;
+	char *data;
+} ftgl_string_t;
+
 FTGLDEF ftgl_return_t
 ftgl_font_library_init(void);
 
@@ -254,6 +266,27 @@ ftgl_font_find_glyph(ftgl_font_t *font,
 FTGLDEF vec2_t
 ftgl_font_string_dimensions(const char *source,
 			    ftgl_font_t *font);
+
+FTGLDEF ftgl_string_t *
+ftgl_string_create(size_t reserve);
+
+FTGLDEF ftgl_return_t
+ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
+		     char *buffer, size_t buffer_len, size_t pos);
+
+FTGLDEF ftgl_return_t
+ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
+		  char *buffer, size_t buffer_len);
+
+FTGLDEF ftgl_return_t
+ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font,
+		   char *buffer, size_t buffer_len);
+
+FTGLDEF vec2_t
+ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font);
+
+FTGLDEF void
+ftgl_string_free(ftgl_string_t *s);
 
 FTGLDEF void
 ftgl_font_free(ftgl_font_t *font);
@@ -1467,6 +1500,145 @@ ftgl_font_string_dimensions(const char *source,
 	}
 
 	return vec;
+}
+
+FTGLDEF ftgl_string_t *
+ftgl_string_create(size_t reserve)
+{
+	ftgl_string_t *s;
+	reserve = reserve == 0 ? FTGL_STRING_CAPACITY : reserve;
+	s = FTGL_MALLOC(sizeof(*s));
+	if (!s) {
+		return NULL;
+	}
+
+	s->size = 0;
+	s->capacity = reserve;
+	s->data = FTGL_CALLOC(s->capacity, sizeof(*s->data));
+	if (!s->data) {
+		FTGL_FREE(s);
+		return NULL;
+	}
+
+	s->width = 0.0;
+	s->height = 0.0;
+	s->updated = 0;
+	return s;
+}
+
+static size_t
+ftgl_npo2(size_t n)
+{
+	n--;
+	n |= n >> 1;
+	n |= n >> 2;
+	n |= n >> 4;
+	n |= n >> 8;
+	n |= n >> 16;
+	n++;
+	return n;
+}
+
+static ftgl_return_t
+ftgl_string_resize(ftgl_string_t *s)
+{
+	char *new_data;
+	size_t new_capacity;
+
+	new_capacity = s->capacity << 1;
+	new_data = FTGL_REALLOC(s->data, sizeof(*new_data) * new_capacity);
+	if (!new_data) {
+		return FTGL_MEMORY_ERROR;
+	}
+
+	s->data = new_data;
+	memset(s->data + s->capacity, 0,
+	       sizeof(*s->data) * (new_capacity - s->capacity));
+	s->capacity = new_capacity;
+	return FTGL_NO_ERROR;
+}
+
+FTGLDEF ftgl_return_t
+ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
+		     char *buffer, size_t buffer_len, size_t pos)
+{
+	ftgl_return_t ret;
+	while (buffer_len + pos >= s->capacity) {
+		if ((ret = ftgl_string_resize(s)) != FTGL_NO_ERROR) {
+			return ret;
+		}
+	}
+
+	memcpy(s->data + pos, buffer, buffer_len);
+	if (buffer_len + pos > s->size) 
+		s->size = buffer_len + pos;
+	s->data[s->size] = '\0';
+	s->updated = 1;
+	return FTGL_NO_ERROR;
+}
+
+FTGLDEF ftgl_return_t
+ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
+		  char *buffer, size_t buffer_len)
+{
+	ftgl_return_t ret;
+	while (buffer_len >= s->capacity) {
+		if ((ret = ftgl_string_resize(s)) != FTGL_NO_ERROR) {
+			return ret;
+		}
+	}
+
+	memcpy(s->data, buffer, buffer_len);
+	s->size = buffer_len;
+	s->data[s->size] = '\0';
+	s->updated = 1;
+	return FTGL_NO_ERROR;
+}
+
+FTGLDEF ftgl_return_t
+ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font,
+		   char *buffer, size_t buffer_len)
+{
+	return ftgl_string_write_at(s, font, buffer, buffer_len, s->size);
+}
+
+FTGLDEF vec2_t
+ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
+{
+	vec2_t v;
+	size_t i;
+	ftgl_glyph_t *glyph;
+	if (!s->updated) {
+		return ll_vec2_create2f(s->width, s->height);
+	}
+
+	v = ll_vec2_origin();
+	for (i = 0; i < s->size; i++) {
+		glyph = ftgl_font_find_glyph(font, s->data[i]);
+		if (!glyph) {
+			return ll_vec2_create2f(-1, -1);
+		}
+
+		if (glyph->h > v.y) {
+			v.y = glyph->h;
+		}
+		v.x += glyph->advance_x;
+	}
+
+	s->width = v.x;
+	s->height = v.y;
+	s->updated = 0;
+	return v;
+}
+
+FTGLDEF void
+ftgl_string_free(ftgl_string_t *s)
+{
+	FTGL_FREE(s->data);
+	s->data = NULL;
+	s->size = 0;
+	s->capacity = 0;
+	FTGL_FREE(s);
 }
 
 FTGLDEF void
