@@ -558,12 +558,13 @@ ftgl_font_manager_resize(void)
 	for (i = 0; i < ftgl_font_manager.capacity; i++) {
 		ftgl_font_node_t *font_node = ftgl_font_manager.nodes[i];
 		if (!font_node) continue;
-		idx0 = ftgl_string_hash(font_node->name, strlen(font_node->name)) & (new_capacity - 1);
+		idx0 = ftgl_string_hash(font_node->name, strlen(font_node->name)) \
+			& (new_capacity - 1);
 		idx1 = idx0 | 1;
 
 		for (j = 0; j <= new_capacity; j++) {
 			real_idx = (idx0 + idx1 * j) & (new_capacity - 1);
-			if (!new_nodes[real_idx]) continue;
+			if (new_nodes[real_idx]) continue;
 			new_nodes[real_idx] = font_node;
 			break;
 		}
@@ -628,6 +629,7 @@ ftgl_font_manager_find(const char *name)
 	for (i = 0; i < ftgl_font_manager.capacity; i++) {
 		real_idx = (idx0 + idx1 * i) & (ftgl_font_manager.capacity - 1);
 		font_node = ftgl_font_manager.nodes[real_idx];
+		if (!font_node) return NULL;
 		if (font_node && strcmp(name, font_node->name) == 0) {
 			return font_node->font;
 		}
@@ -1455,7 +1457,6 @@ ftgl_font_string_dimensions(const char *source,
 	vec = ll_vec2_origin();
 	p = source;
 
-	vec.y = font->height;
 	while (*p != '\0') {
 		glyph = ftgl_font_find_glyph(font, *p);
 		if (!glyph) {
