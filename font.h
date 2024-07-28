@@ -42,7 +42,7 @@ extern FT_Library ftgl_font_library;
 #endif /* FTGLSTATIC */
 #endif /* FTGLDEF */
 
-#if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC) \
+#if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC)			\
 	|| !defined(FTGL_CALLOC) || !defined(FTGL_FREE) || !defined(FTGL_STRDUP)
 #define FTGL_MALLOC(sz) malloc(sz)
 #define FTGL_REALLOC(x, newsz) realloc(x, newsz)
@@ -746,7 +746,7 @@ ftgl_font_set_size(ftgl_font_t *font, float size)
 {
 	FT_Error ft_error;
 	FT_Matrix matrix = {
-		(int)((1.0/FTGL_FONT_HRES) * 0x10000L),
+		(int)((1.0/FTGL_FONT_HRES)  * 0x10000L),
 		(int)((0.0)                 * 0x10000L),
 		(int)((0.0)                 * 0x10000L),
 		(int)((1.0)                 * 0x10000L)
@@ -1608,6 +1608,7 @@ ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
 	vec2_t v;
 	size_t i;
 	ftgl_glyph_t *glyph;
+	float glyph_height;
 	if (!s->updated) {
 		return ll_vec2_create2f(s->width, s->height);
 	}
@@ -1619,8 +1620,9 @@ ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
 			return ll_vec2_create2f(-1, -1);
 		}
 
-		if (glyph->h > v.y) {
-			v.y = glyph->h;
+		glyph_height = glyph->offset_y;
+		if (glyph_height > v.y) {
+			v.y = glyph_height;
 		}
 		v.x += glyph->advance_x;
 	}
