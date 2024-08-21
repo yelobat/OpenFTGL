@@ -215,84 +215,29 @@ typedef struct ftgl_string_t {
 	char *data;
 } ftgl_string_t;
 
-FTGLDEF ftgl_return_t
-ftgl_font_library_init(void);
-
-FTGLDEF ftgl_return_t
-ftgl_font_manager_insert(const char *name, const char *path,
-			 size_t ptsize);
-
-FTGLDEF ftgl_font_t *
-ftgl_font_manager_find(const char *name);
-
-FTGLDEF ftgl_font_t *
-ftgl_font_create(void);
-
-FTGLDEF ftgl_return_t
-ftgl_font_bind(ftgl_font_t *font, const char *path);
-
-FTGLDEF ftgl_return_t
-ftgl_font_set_size(ftgl_font_t *font, float size);
-
-FTGLDEF void
-ftgl_computegradient(double *img, int w, int h, double *gx, double *gy);
-
-FTGLDEF double
-ftgl_edgedf(double gx, double gy, double a);
-
-FTGLDEF double
-ftgl_distaa3(double *img, double *gximg, double *gyimg, int w,
-	     int c, int xc, int yc, int xi, int yi);
-
-FTGLDEF void
-ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h,
-	    short *distx, short *disty, double *dist);
-
-FTGLDEF double *
-ftgl_distance_mapd(double *data, unsigned int width,
-		   unsigned int height);
-
-FTGLDEF unsigned char *
-ftgl_distance_mapb(unsigned char *img, unsigned int width,
-		   unsigned int height);
-
-FTGLDEF ftgl_glyph_t *
-ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint);
-
-FTGLDEF ftgl_glyph_t *
-ftgl_font_find_glyph(ftgl_font_t *font,
-		     uint32_t codepoint);
-
-FTGLDEF vec2_t
-ftgl_font_string_dimensions(const char *source,
-			    ftgl_font_t *font);
-
-FTGLDEF ftgl_string_t *
-ftgl_string_create(size_t reserve);
-
-FTGLDEF ftgl_return_t
-ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
-		     char *buffer, size_t buffer_len, size_t pos);
-
-FTGLDEF ftgl_return_t
-ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
-		  char *buffer, size_t buffer_len);
-
-FTGLDEF ftgl_return_t
-ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font,
-		   char *buffer, size_t buffer_len);
-
-FTGLDEF vec2_t
-ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font);
-
-FTGLDEF void
-ftgl_string_free(ftgl_string_t *s);
-
-FTGLDEF void
-ftgl_font_free(ftgl_font_t *font);
-
-FTGLDEF void
-ftgl_font_library_free(void);
+FTGLDEF ftgl_return_t   ftgl_font_library_init(void);
+FTGLDEF ftgl_return_t   ftgl_font_manager_insert(const char *name, const char *path, size_t ptsize);
+FTGLDEF ftgl_font_t *   ftgl_font_manager_find(const char *name);
+FTGLDEF ftgl_font_t *   ftgl_font_create(void);
+FTGLDEF ftgl_return_t   ftgl_font_bind(ftgl_font_t *font, const char *path);
+FTGLDEF ftgl_return_t   ftgl_font_set_size(ftgl_font_t *font, float size);
+FTGLDEF void            ftgl_computegradient(double *img, int w, int h, double *gx, double *gy);
+FTGLDEF double          ftgl_edgedf(double gx, double gy, double a);
+FTGLDEF double          ftgl_distaa3(double *img, double *gximg, double *gyimg, int w, int c, int xc, int yc, int xi, int yi);
+FTGLDEF void            ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h, short *distx, short *disty, double *dist);
+FTGLDEF double *        ftgl_distance_mapd(double *data, unsigned int width, unsigned int height);
+FTGLDEF unsigned char * ftgl_distance_mapb(unsigned char *img, unsigned int width, unsigned int height);
+FTGLDEF ftgl_glyph_t *  ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint);
+FTGLDEF ftgl_glyph_t *  ftgl_font_find_glyph(ftgl_font_t *font, uint32_t codepoint);
+FTGLDEF vec2_t          ftgl_font_string_dimensions(const char *source, ftgl_font_t *font);
+FTGLDEF ftgl_string_t * ftgl_string_create(size_t reserve);
+FTGLDEF ftgl_return_t   ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font, char *buffer, size_t buffer_len, size_t pos);
+FTGLDEF ftgl_return_t   ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font, char *buffer, size_t buffer_len);
+FTGLDEF ftgl_return_t   ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font, char *buffer, size_t buffer_len);
+FTGLDEF vec2_t          ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font);
+FTGLDEF void            ftgl_string_free(ftgl_string_t *s);
+FTGLDEF void            ftgl_font_free(ftgl_font_t *font);
+FTGLDEF void            ftgl_font_library_free(void);
 
 #ifdef FTGL_IMPLEMENTATION
 
@@ -518,8 +463,7 @@ ftgl_font_manager_init(void)
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t
-ftgl_font_library_init(void)
+FTGLDEF ftgl_return_t ftgl_font_library_init(void)
 {
 	FT_Error ft_error;
 	ftgl_return_t ret;
@@ -609,8 +553,7 @@ ftgl_font_manager_resize(void)
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t
-ftgl_font_manager_insert(const char *name, const char *path,
+FTGLDEF ftgl_return_t ftgl_font_manager_insert(const char *name, const char *path,
 			 size_t ptsize)
 {
 	ftgl_return_t ret;
@@ -650,8 +593,7 @@ ftgl_font_manager_insert(const char *name, const char *path,
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_font_t *
-ftgl_font_manager_find(const char *name)
+FTGLDEF ftgl_font_t * ftgl_font_manager_find(const char *name)
 {
 	ftgl_font_node_t *font_node;
 	size_t idx0, idx1, real_idx, i;
@@ -671,8 +613,7 @@ ftgl_font_manager_find(const char *name)
 	return NULL;
 }
 
-FTGLDEF ftgl_font_t *
-ftgl_font_create(void)
+FTGLDEF ftgl_font_t * ftgl_font_create(void)
 {
 	GLenum gl_error;
 	ftgl_font_t *font;
@@ -720,8 +661,7 @@ ftgl_font_create(void)
 	return font;
 }
 
-FTGLDEF ftgl_return_t
-ftgl_font_bind(ftgl_font_t *font, const char *path)
+FTGLDEF ftgl_return_t ftgl_font_bind(ftgl_font_t *font, const char *path)
 {
 	FT_Error ft_error;
 
@@ -741,8 +681,7 @@ ftgl_font_bind(ftgl_font_t *font, const char *path)
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t
-ftgl_font_set_size(ftgl_font_t *font, float size)
+FTGLDEF ftgl_return_t ftgl_font_set_size(ftgl_font_t *font, float size)
 {
 	FT_Error ft_error;
 	FT_Matrix matrix = {
@@ -774,8 +713,7 @@ ftgl_font_set_size(ftgl_font_t *font, float size)
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF void
-ftgl_computegradient(double *img, int w, int h, double *gx, double *gy)
+FTGLDEF void ftgl_computegradient(double *img, int w, int h, double *gx, double *gy)
 {
 	int i, j, k;
 	double glength;
@@ -803,8 +741,7 @@ ftgl_computegradient(double *img, int w, int h, double *gx, double *gy)
 #undef SQRT2
 }
 
-FTGLDEF double
-ftgl_edgedf(double gx, double gy, double a)
+FTGLDEF double ftgl_edgedf(double gx, double gy, double a)
 {
 	double df, glength, temp, a1;
 
@@ -848,8 +785,7 @@ ftgl_edgedf(double gx, double gy, double a)
 	return df;
 }
 
-FTGLDEF double
-ftgl_distaa3(double *img, double *gximg, double *gyimg, int w,
+FTGLDEF double ftgl_distaa3(double *img, double *gximg, double *gyimg, int w,
 	     int c, int xc, int yc, int xi, int yi)
 {
 	double di, df, dx, dy, gx, gy, a;
@@ -896,8 +832,7 @@ ftgl_distaa3(double *img, double *gximg, double *gyimg, int w,
 // Shorthand macro: add ubiquitous parameters dist, gx, gy, img and w and call distaa3()
 #define DISTAA(c,xc,yc,xi,yi) (ftgl_distaa3(img, gx, gy, w, c, xc, yc, xi, yi))
 
-FTGLDEF void
-ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h,
+FTGLDEF void ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h,
 	    short *distx, short *disty, double *dist)
 {
 	int x, y, i, c;
@@ -1289,8 +1224,7 @@ ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h,
 	/* The transformation is completed. */
 }
 
-FTGLDEF double *
-ftgl_distance_mapd(double *data, unsigned int width,
+FTGLDEF double * ftgl_distance_mapd(double *data, unsigned int width,
 		   unsigned int height)
 {
 	short *xdist = FTGL_MALLOC(width * height * sizeof(*xdist));
@@ -1350,8 +1284,7 @@ ftgl_distance_mapd(double *data, unsigned int width,
 	return data;
 }
 
-FTGLDEF unsigned char *
-ftgl_distance_mapb(unsigned char *img, unsigned int width,
+FTGLDEF unsigned char * ftgl_distance_mapb(unsigned char *img, unsigned int width,
 		   unsigned int height)
 {
 	double *data = FTGL_CALLOC(width * height, sizeof(*data));
@@ -1382,8 +1315,7 @@ ftgl_distance_mapb(unsigned char *img, unsigned int width,
 	return out;
 }
 
-FTGLDEF ftgl_glyph_t *
-ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
+FTGLDEF ftgl_glyph_t * ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 {
 	FT_Error ft_error;
 	FT_GlyphSlot slot;
@@ -1472,38 +1404,13 @@ ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
 	return glyph;
 }
 
-FTGLDEF ftgl_glyph_t *
-ftgl_font_find_glyph(ftgl_font_t *font,
+FTGLDEF ftgl_glyph_t * ftgl_font_find_glyph(ftgl_font_t *font,
 		     uint32_t codepoint)
 {
 	return ftgl_glyphmap_find_glyph(font->glyphmap, codepoint);
 }
 
-FTGLDEF vec2_t
-ftgl_font_string_dimensions(const char *source,
-			    ftgl_font_t *font)
-{
-	vec2_t vec;
-	const char *p;
-	ftgl_glyph_t *glyph;
-
-	vec = ll_vec2_origin();
-	p = source;
-
-	while (*p != '\0') {
-		glyph = ftgl_font_find_glyph(font, *p);
-		if (!glyph) {
-			return vec;
-		}
-		vec.x += glyph->advance_x;
-		p++;
-	}
-
-	return vec;
-}
-
-FTGLDEF ftgl_string_t *
-ftgl_string_create(size_t reserve)
+FTGLDEF ftgl_string_t * ftgl_string_create(size_t reserve)
 {
 	ftgl_string_t *s;
 	reserve = reserve == 0 ? FTGL_STRING_CAPACITY : reserve;
@@ -1526,8 +1433,7 @@ ftgl_string_create(size_t reserve)
 	return s;
 }
 
-static size_t
-ftgl_npo2(size_t n)
+static size_t ftgl_npo2(size_t n)
 {
 	n--;
 	n |= n >> 1;
@@ -1539,8 +1445,7 @@ ftgl_npo2(size_t n)
 	return n;
 }
 
-static ftgl_return_t
-ftgl_string_resize(ftgl_string_t *s)
+static ftgl_return_t ftgl_string_resize(ftgl_string_t *s)
 {
 	char *new_data;
 	size_t new_capacity;
@@ -1558,8 +1463,7 @@ ftgl_string_resize(ftgl_string_t *s)
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t
-ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
+FTGLDEF ftgl_return_t ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
 		     char *buffer, size_t buffer_len, size_t pos)
 {
 	ftgl_return_t ret;
@@ -1577,8 +1481,7 @@ ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t
-ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
+FTGLDEF ftgl_return_t ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
 		  char *buffer, size_t buffer_len)
 {
 	ftgl_return_t ret;
@@ -1595,15 +1498,13 @@ ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t
-ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font,
+FTGLDEF ftgl_return_t ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font,
 		   char *buffer, size_t buffer_len)
 {
 	return ftgl_string_write_at(s, font, buffer, buffer_len, s->size);
 }
 
-FTGLDEF vec2_t
-ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
+FTGLDEF vec2_t ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
 {
 	vec2_t v;
 	size_t i;
@@ -1633,8 +1534,7 @@ ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
 	return v;
 }
 
-FTGLDEF void
-ftgl_string_free(ftgl_string_t *s)
+FTGLDEF void ftgl_string_free(ftgl_string_t *s)
 {
 	FTGL_FREE(s->data);
 	s->data = NULL;
@@ -1643,8 +1543,7 @@ ftgl_string_free(ftgl_string_t *s)
 	FTGL_FREE(s);
 }
 
-FTGLDEF void
-ftgl_font_free(ftgl_font_t *font)
+FTGLDEF void ftgl_font_free(ftgl_font_t *font)
 {
 	glDeleteTextures(1, &font->texture);
 	FT_Done_Face(font->face);
@@ -1657,16 +1556,14 @@ ftgl_font_free(ftgl_font_t *font)
 	FTGL_FREE(font);
 }
 
-static void
-ftgl_font_node_free(ftgl_font_node_t *font_node)
+static void ftgl_font_node_free(ftgl_font_node_t *font_node)
 {
 	FTGL_FREE(font_node->name);
 	ftgl_font_free(font_node->font);
 	FTGL_FREE(font_node);
 }	
 
-static void
-ftgl_font_manager_free(void)
+static void ftgl_font_manager_free(void)
 {
 	size_t i;
 	ftgl_font_node_t *font_node;
@@ -1680,8 +1577,7 @@ ftgl_font_manager_free(void)
 	memset(&ftgl_font_manager, 0, sizeof(ftgl_font_manager));
 }
 
-FTGLDEF void
-ftgl_font_library_free(void)
+FTGLDEF void ftgl_font_library_free(void)
 {
 	ftgl_font_manager_free();
 }
