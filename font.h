@@ -1396,6 +1396,30 @@ FTGLDEF ftgl_glyph_t * ftgl_font_find_glyph(ftgl_font_t *font,
 	return ftgl_glyphmap_find_glyph(font->glyphmap, codepoint);
 }
 
+FTGLDEF vec2_t ftgl_font_string_dimensions(const char *source, ftgl_font_t *font)
+{
+	char c;
+	vec2_t v;
+	size_t i;
+	ftgl_glyph_t *glyph;
+	float glyph_height;
+	v = ll_vec2_origin();
+	for (i = 0; (c = source[i]) != '\0'; i++) {
+		glyph = ftgl_font_find_glyph(font, c);
+		if (!glyph) {
+			return ll_vec2_create2f(-1, -1);
+		}
+
+		glyph_height = glyph->offset_y;
+		if (glyph_height > v.y) {
+			v.y = glyph_height;
+		}
+		v.x += glyph->advance_x;
+	}
+
+	return v;
+}
+
 FTGLDEF ftgl_string_t * ftgl_string_create(size_t reserve)
 {
 	ftgl_string_t *s;
