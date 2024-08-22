@@ -259,20 +259,17 @@ struct {
 
 FT_Library ftgl_font_library;
 
-static float
-ftgl_F26Dot6_to_float(FT_F26Dot6 value)
+static float ftgl_F26Dot6_to_float(FT_F26Dot6 value)
 {
 	return ((float) value) / 64.0;
 }
 
-static FT_F26Dot6
-ftgl_float_to_F26Dot6(float value)
+static FT_F26Dot6 ftgl_float_to_F26Dot6(float value)
 {
 	return (FT_F26Dot6) (value * 64.0);
 }
 
-static ftgl_glyph_t *
-ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
+static ftgl_glyph_t *ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 		     GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
 	ftgl_glyph_t *glyph;
@@ -290,8 +287,7 @@ ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 	return glyph;
 }
 
-static void
-ftgl_glyph_free(ftgl_glyph_t *glyph)
+static void ftgl_glyph_free(ftgl_glyph_t *glyph)
 {
 	glyph->bbox = ll_ivec4_create4i(0,0,0,0);
 	glyph->codepoint = 0;
@@ -302,8 +298,7 @@ ftgl_glyph_free(ftgl_glyph_t *glyph)
 	FTGL_FREE(glyph);
 }
 
-static ftgl_glyphlist_t *
-ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
+static ftgl_glyphlist_t *ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 			 GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
 	ftgl_glyphlist_t *glyphlist;
@@ -326,8 +321,7 @@ ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 	return glyphlist;
 }
 
-static void
-ftgl_glyphlist_free(ftgl_glyphlist_t *glyphlist)
+static void ftgl_glyphlist_free(ftgl_glyphlist_t *glyphlist)
 {
 	ftgl_glyph_free(glyphlist->glyph);
 	glyphlist->glyph = NULL;
@@ -335,8 +329,7 @@ ftgl_glyphlist_free(ftgl_glyphlist_t *glyphlist)
 	FTGL_FREE(glyphlist);
 }
 
-static ftgl_glyphmap_t *
-ftgl_glyphmap_create(void)
+static ftgl_glyphmap_t *ftgl_glyphmap_create(void)
 {
 	ftgl_glyphmap_t *glyphmap;
 	glyphmap = FTGL_MALLOC(sizeof(*glyphmap));
@@ -349,8 +342,7 @@ ftgl_glyphmap_create(void)
 	return glyphmap;
 }
 
-static ftgl_glyph_t *
-ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
+static ftgl_glyph_t *ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
 			 uint32_t codepoint)
 {
 	ftgl_glyph_t *glyph;
@@ -369,8 +361,7 @@ ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
 	return NULL;
 }
 
-static ftgl_return_t
-ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
+static ftgl_return_t ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
 		     uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 		     GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
@@ -396,8 +387,7 @@ ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
 	return FTGL_NO_ERROR;
 }
 
-static void
-ftgl_glyphmap_free(ftgl_glyphmap_t *glyphmap)
+static void ftgl_glyphmap_free(ftgl_glyphmap_t *glyphmap)
 {
 	size_t i;
 	ftgl_glyphlist_t *glyphlist;
@@ -419,8 +409,7 @@ ftgl_glyphmap_free(ftgl_glyphmap_t *glyphmap)
 
 // meiyan hash function
 // Source: http://www.sanmayce.com/Fastest_Hash/
-static inline uint32_t
-ftgl_string_hash(const char *s, size_t len)
+static inline uint32_t ftgl_string_hash(const char *s, size_t len)
 {
 	uint32_t hash = 0x811c9dc5;
 	while (len >= 8) {
@@ -449,8 +438,7 @@ ftgl_string_hash(const char *s, size_t len)
 	return hash ^ (hash >> 16);
 }
 
-static ftgl_return_t
-ftgl_font_manager_init(void)
+static ftgl_return_t ftgl_font_manager_init(void)
 {
 	ftgl_font_manager.size = 0;
 	ftgl_font_manager.capacity = FTGL_FONT_MANAGER_CAPACITY;
@@ -477,8 +465,7 @@ FTGLDEF ftgl_return_t ftgl_font_library_init(void)
 	return FTGL_NO_ERROR;
 }
 
-static ftgl_font_node_t *
-ftgl_font_node_create(const char *name, const char *path,
+static ftgl_font_node_t *ftgl_font_node_create(const char *name, const char *path,
 		      size_t ptsize)
 {
 	ftgl_return_t ret;
@@ -520,8 +507,7 @@ ftgl_font_node_create(const char *name, const char *path,
 	return font_node;
 }
 
-static ftgl_return_t
-ftgl_font_manager_resize(void)
+static ftgl_return_t ftgl_font_manager_resize(void)
 {
 	size_t new_capacity, i, j;
 	ftgl_font_node_t **new_nodes;
