@@ -1,5 +1,5 @@
 /**
- * @author: wwotz
+ * @author: yelobat
  * 
  * @description: Use FreeType with OpenGL to render text using a single
  * texture buffer. This project was inspired by rougier's freetype-gl
