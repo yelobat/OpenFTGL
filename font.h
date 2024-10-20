@@ -42,6 +42,20 @@ extern FT_Library ftgl_font_library;
 #endif /* FTGLSTATIC */
 #endif /* FTGLDEF */
 
+#if !defined(FTGL_LOG_MESSAGE) && !defined(FTGL_POP_MESSAGE)
+#include <stdarg.h>
+#include <stdio.h>
+#define FTGL_LOG
+#define FTGL_LOG_STACK_CAPACITY (20)
+#define FTGL_LOG_MESSAGE_CAPACITY (256)
+#define FTGL_LOG_MESSAGE(fmt, ...)					\
+	ftgl_log_message("Error in file '%s' at %s on line %d: " fmt,	\
+			__FILE__, __func__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
+
+#define FTGL_POP_MESSAGE()			\
+	ftgl_log_pop_message()
+#endif
+
 #if !defined(FTGL_MALLOC) || !defined(FTGL_REALLOC)			\
 	|| !defined(FTGL_CALLOC) || !defined(FTGL_FREE) || !defined(FTGL_STRDUP)
 #define FTGL_MALLOC(sz) malloc(sz)
@@ -58,7 +72,7 @@ typedef enum ftgl_return_t {
 	FTGL_FREETYPE_ERROR,
 } ftgl_return_t;
 
-typedef struct ftgl_glyph_t {
+struct ftgl_glyph_t {
 	/**
 	 * The bounding box of the glyph in the texture
 	 */
@@ -101,18 +115,24 @@ typedef struct ftgl_glyph_t {
 	 * when the glyph is drawn as part of a string of text.
 	 */
 	GLfloat advance_y;
-} ftgl_glyph_t;
+};
 
-typedef struct ftgl_glyphlist_t {
-	ftgl_glyph_t *glyph;
+typedef struct ftgl_glyph_t *ftgl_glyph_t;
+
+struct ftgl_glyphlist_t {
+	ftgl_glyph_t glyph;
 	struct ftgl_glyphlist_t *next;
-} ftgl_glyphlist_t;
+};
+
+typedef struct ftgl_glyphlist_t *ftgl_glyphlist_t;
 
 #define FTGL_FONT_GLYPHMAP_CAPACITY 23
 
-typedef struct ftgl_glyphmap_t {
-	ftgl_glyphlist_t *map[FTGL_FONT_GLYPHMAP_CAPACITY];
-} ftgl_glyphmap_t;
+struct ftgl_glyphmap_t {
+	ftgl_glyphlist_t map[FTGL_FONT_GLYPHMAP_CAPACITY];
+};
+
+typedef struct ftgl_glyphmap_t *ftgl_glyphmap_t;
 
 #define FTGL_FONT_ATLAS_WIDTH  1024
 #define FTGL_FONT_ATLAS_HEIGHT 1024
@@ -122,7 +142,7 @@ typedef enum ftgl_rendermode_t {
 	FTGL_RENDERMODE_SDF,
 } ftgl_rendermode_t;
 
-typedef struct ftgl_font_t {
+struct ftgl_font_t {
 	/**
 	 * Stores the texture for which
 	 * the glyphs are stored inside of.
@@ -194,18 +214,20 @@ typedef struct ftgl_font_t {
 	/**
 	 * A hashmap containing glyph information.
 	 */
-	ftgl_glyphmap_t *glyphmap;
+	ftgl_glyphmap_t glyphmap;
 
 	/**
 	 * FTGL_RENDERMODE_NORMAL - Normal Bitmap rendering
 	 * FTGL_RENDERMODE_SDF    - Signed Distance Field (SDF) rendering
 	 */
 	ftgl_rendermode_t rendermode;
-} ftgl_font_t;
+};
+
+typedef struct ftgl_font_t *ftgl_font_t;
 
 #define FTGL_STRING_CAPACITY (4)
 
-typedef struct ftgl_string_t {
+struct ftgl_string_t {
 	GLfloat width;
 	GLfloat height;
 	char updated;
@@ -213,43 +235,101 @@ typedef struct ftgl_string_t {
 	size_t size;
 	size_t capacity;
 	char *data;
-} ftgl_string_t;
+};
+
+typedef struct ftgl_string_t *ftgl_string_t;
+
+FTGLDEF void ftgl_log_message(const char *fmt, ...);
+FTGLDEF const char *ftgl_log_pop_message(void);
 
 FTGLDEF ftgl_return_t   ftgl_font_library_init(void);
 FTGLDEF ftgl_return_t   ftgl_font_manager_insert(const char *name, const char *path, size_t ptsize);
-FTGLDEF ftgl_font_t *   ftgl_font_manager_find(const char *name);
-FTGLDEF ftgl_font_t *   ftgl_font_create(void);
-FTGLDEF ftgl_return_t   ftgl_font_bind(ftgl_font_t *font, const char *path);
-FTGLDEF ftgl_return_t   ftgl_font_set_size(ftgl_font_t *font, float size);
+FTGLDEF ftgl_font_t     ftgl_font_manager_find(const char *name);
+FTGLDEF ftgl_font_t     ftgl_font_create(void);
+FTGLDEF ftgl_return_t   ftgl_font_bind(ftgl_font_t font, const char *path);
+FTGLDEF ftgl_return_t   ftgl_font_set_size(ftgl_font_t font, float size);
 FTGLDEF void            ftgl_computegradient(double *img, int w, int h, double *gx, double *gy);
 FTGLDEF double          ftgl_edgedf(double gx, double gy, double a);
 FTGLDEF double          ftgl_distaa3(double *img, double *gximg, double *gyimg, int w, int c, int xc, int yc, int xi, int yi);
 FTGLDEF void            ftgl_edtaa3(double *img, double *gx, double *gy, int w, int h, short *distx, short *disty, double *dist);
 FTGLDEF double *        ftgl_distance_mapd(double *data, unsigned int width, unsigned int height);
 FTGLDEF unsigned char * ftgl_distance_mapb(unsigned char *img, unsigned int width, unsigned int height);
-FTGLDEF ftgl_glyph_t *  ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint);
-FTGLDEF ftgl_glyph_t *  ftgl_font_find_glyph(ftgl_font_t *font, uint32_t codepoint);
-FTGLDEF vec2_t          ftgl_font_string_dimensions(const char *source, ftgl_font_t *font);
-FTGLDEF ftgl_string_t * ftgl_string_create(size_t reserve);
-FTGLDEF ftgl_return_t   ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font, char *buffer, size_t buffer_len, size_t pos);
-FTGLDEF ftgl_return_t   ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font, char *buffer, size_t buffer_len);
-FTGLDEF ftgl_return_t   ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font, char *buffer, size_t buffer_len);
-FTGLDEF vec2_t          ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font);
+FTGLDEF ftgl_glyph_t    ftgl_font_load_codepoint(ftgl_font_t font, uint32_t codepoint);
+FTGLDEF ftgl_glyph_t    ftgl_font_find_glyph(ftgl_font_t font, uint32_t codepoint);
+FTGLDEF vec2_t          ftgl_font_string_dimensions(const char *source, ftgl_font_t font);
+FTGLDEF ftgl_string_t   ftgl_string_create(size_t reserve);
+FTGLDEF ftgl_return_t   ftgl_string_write_at(ftgl_string_t s, ftgl_font_t font, char *buffer, size_t buffer_len, size_t pos);
+FTGLDEF ftgl_return_t   ftgl_string_write(ftgl_string_t s, ftgl_font_t font, char *buffer, size_t buffer_len);
+FTGLDEF ftgl_return_t   ftgl_string_append(ftgl_string_t s, ftgl_font_t font, char *buffer, size_t buffer_len);
+FTGLDEF vec2_t          ftgl_string_dimensions(ftgl_string_t s, ftgl_font_t font);
 FTGLDEF void            ftgl_string_free(ftgl_string_t *s);
 FTGLDEF void            ftgl_font_free(ftgl_font_t *font);
 FTGLDEF void            ftgl_font_library_free(void);
 
 #ifdef FTGL_IMPLEMENTATION
 
-typedef struct ftgl_font_node_t {
+#ifdef FTGL_LOG
+static char ftgl_log_stack[FTGL_LOG_STACK_CAPACITY][FTGL_LOG_MESSAGE_CAPACITY];
+static int ftgl_log_stack_ptr;
+static int ftgl_log_stack_size;
+
+static int ftgl_log_empty(void)
+{
+	return ftgl_log_stack_size == 0;
+}
+
+static int ftgl_log_full(void)
+{
+	return ftgl_log_stack_size == FTGL_LOG_STACK_CAPACITY;
+}
+#endif /* FTGL_LOG */
+
+FTGLDEF void ftgl_log_message(const char *fmt, ...)
+{
+#ifdef FTGL_LOG
+	va_list args;
+	if (!ftgl_log_full()) {
+		ftgl_log_stack_size++;
+	}
+
+	va_start(args, fmt);
+	vsnprintf((char *) (ftgl_log_stack + ftgl_log_stack_ptr),
+		  FTGL_LOG_MESSAGE_CAPACITY - 1, fmt, args);
+	va_end(args);
+	ftgl_log_stack_ptr = (ftgl_log_stack_ptr + 1) % FTGL_LOG_STACK_CAPACITY;
+#else /* !defined(FTGL_LOG) */
+	(void) 0;
+#endif /* FTGL_LOG */
+}
+
+FTGLDEF const char *ftgl_log_pop_message(void)
+{
+#ifdef FTGL_LOG
+	if (!ftgl_log_empty()) {
+		ftgl_log_stack_size--;
+		ftgl_log_stack_ptr--;
+		if (ftgl_log_stack_ptr < 0) {
+			ftgl_log_stack_ptr += FTGL_LOG_STACK_CAPACITY;
+		}
+		return (const char *) ftgl_log_stack[ftgl_log_stack_ptr];
+	}
+	return "No Errors";
+#else /* !defined(FTGL_LOG) */
+	return "Debugging disabled!";
+#endif /* FTGL_LOG */
+}
+
+struct ftgl_font_node_t {
 	char *name;
-	ftgl_font_t *font;
-} ftgl_font_node_t;
+	ftgl_font_t font;
+};
+
+typedef struct ftgl_font_node_t *ftgl_font_node_t;
 
 struct {
 	size_t size;
 	size_t capacity;
-	ftgl_font_node_t **nodes;
+	ftgl_font_node_t *nodes;
 } ftgl_font_manager;
 
 #define FTGL_FONT_MANAGER_CAPACITY (2)
@@ -269,12 +349,13 @@ static FT_F26Dot6 ftgl_float_to_F26Dot6(float value)
 	return (FT_F26Dot6) (value * 64.0);
 }
 
-static ftgl_glyph_t *ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
-		     GLint offset_y, GLfloat advance_x, GLfloat advance_y)
+static ftgl_glyph_t ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
+					 GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
-	ftgl_glyph_t *glyph;
+	ftgl_glyph_t glyph;
 	glyph = FTGL_MALLOC(sizeof(*glyph));
 	if (!glyph) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return NULL;
 	}
 
@@ -289,30 +370,32 @@ static ftgl_glyph_t *ftgl_glyph_create4iv(uint32_t codepoint, ivec4_t bbox, GLin
 
 static void ftgl_glyph_free(ftgl_glyph_t *glyph)
 {
-	glyph->bbox = ll_ivec4_create4i(0,0,0,0);
-	glyph->codepoint = 0;
-	glyph->offset_x = 0;
-	glyph->offset_y = 0;
-	glyph->advance_x = 0;
-	glyph->advance_y = 0;
-	FTGL_FREE(glyph);
+	(*glyph)->bbox = ll_ivec4_create4i(0,0,0,0);
+	(*glyph)->codepoint = 0;
+	(*glyph)->offset_x = 0;
+	(*glyph)->offset_y = 0;
+	(*glyph)->advance_x = 0;
+	(*glyph)->advance_y = 0;
+	FTGL_FREE(*glyph);
 }
 
-static ftgl_glyphlist_t *ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
-			 GLint offset_y, GLfloat advance_x, GLfloat advance_y)
+static ftgl_glyphlist_t ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bbox, GLint offset_x,
+						 GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
-	ftgl_glyphlist_t *glyphlist;
-	ftgl_glyph_t *glyph;
+	ftgl_glyphlist_t glyphlist;
+	ftgl_glyph_t glyph;
 
 	glyph = ftgl_glyph_create4iv(codepoint, bbox, offset_x,
 				     offset_y, advance_x, advance_y);
 	if (!glyph) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return NULL;
 	}
 
 	glyphlist = FTGL_MALLOC(sizeof(*glyphlist));
 	if (!glyphlist) {
-		FTGL_FREE(glyph);
+		FTGL_LOG_MESSAGE("Ran out of memory!");
+		ftgl_glyph_free(&glyph);
 		return NULL;
 	}
 
@@ -323,17 +406,18 @@ static ftgl_glyphlist_t *ftgl_glyphlist_create4iv(uint32_t codepoint, ivec4_t bb
 
 static void ftgl_glyphlist_free(ftgl_glyphlist_t *glyphlist)
 {
-	ftgl_glyph_free(glyphlist->glyph);
-	glyphlist->glyph = NULL;
-	glyphlist->next = NULL;
-	FTGL_FREE(glyphlist);
+	ftgl_glyph_free(&(*glyphlist)->glyph);
+	(*glyphlist)->glyph = NULL;
+	(*glyphlist)->next = NULL;
+	FTGL_FREE(*glyphlist);
 }
 
-static ftgl_glyphmap_t *ftgl_glyphmap_create(void)
+static ftgl_glyphmap_t ftgl_glyphmap_create(void)
 {
-	ftgl_glyphmap_t *glyphmap;
+	ftgl_glyphmap_t glyphmap;
 	glyphmap = FTGL_MALLOC(sizeof(*glyphmap));
 	if (!glyphmap) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return NULL;
 	}
 
@@ -342,11 +426,11 @@ static ftgl_glyphmap_t *ftgl_glyphmap_create(void)
 	return glyphmap;
 }
 
-static ftgl_glyph_t *ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
+static ftgl_glyph_t ftgl_glyphmap_find_glyph(ftgl_glyphmap_t glyphmap,
 			 uint32_t codepoint)
 {
-	ftgl_glyph_t *glyph;
-	ftgl_glyphlist_t *glyphlist;
+	ftgl_glyph_t glyph;
+	ftgl_glyphlist_t glyphlist;
 	size_t hash;
 
 	hash = codepoint % FTGL_FONT_GLYPHMAP_CAPACITY;
@@ -361,12 +445,12 @@ static ftgl_glyph_t *ftgl_glyphmap_find_glyph(ftgl_glyphmap_t *glyphmap,
 	return NULL;
 }
 
-static ftgl_return_t ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
+static ftgl_return_t ftgl_glyphmap_insert(ftgl_glyphmap_t glyphmap,
 		     uint32_t codepoint, ivec4_t bbox, GLint offset_x,
 		     GLint offset_y, GLfloat advance_x, GLfloat advance_y)
 {
 	size_t hash;
-	ftgl_glyphlist_t *glyphlist;
+	ftgl_glyphlist_t glyphlist;
 	if (ftgl_glyphmap_find_glyph(glyphmap, codepoint)) {
 		return FTGL_NO_ERROR;
 	}
@@ -374,6 +458,7 @@ static ftgl_return_t ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
 	glyphlist = ftgl_glyphlist_create4iv(codepoint, bbox, offset_x,
 					     offset_y, advance_x, advance_y);
 	if (!glyphlist) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return FTGL_MEMORY_ERROR;
 	}
 
@@ -390,21 +475,21 @@ static ftgl_return_t ftgl_glyphmap_insert(ftgl_glyphmap_t *glyphmap,
 static void ftgl_glyphmap_free(ftgl_glyphmap_t *glyphmap)
 {
 	size_t i;
-	ftgl_glyphlist_t *glyphlist;
+	ftgl_glyphlist_t glyphlist;
 
 	for (i = 0; i < FTGL_FONT_GLYPHMAP_CAPACITY; i++) {
-		glyphlist = glyphmap->map[i];
+		glyphlist = (*glyphmap)->map[i];
 		while (glyphlist != NULL) {
-			ftgl_glyphlist_t *next;
+			ftgl_glyphlist_t next;
 			next = glyphlist->next;
-			ftgl_glyphlist_free(glyphlist);
+			ftgl_glyphlist_free(&glyphlist);
 			glyphlist = next;
 		}
 	}
 
-	memset(glyphmap->map, 0, sizeof(*glyphmap->map)
+	memset((*glyphmap)->map, 0, sizeof(*(*glyphmap)->map)
 	       * FTGL_FONT_GLYPHMAP_CAPACITY);
-	FTGL_FREE(glyphmap);
+	FTGL_FREE(*glyphmap);
 }
 
 // meiyan hash function
@@ -445,6 +530,7 @@ static ftgl_return_t ftgl_font_manager_init(void)
 	ftgl_font_manager.nodes = FTGL_CALLOC(ftgl_font_manager.capacity,
 					      sizeof(*ftgl_font_manager.nodes));
 	if (!ftgl_font_manager.nodes) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return FTGL_MEMORY_ERROR;
 	}
 
@@ -456,6 +542,7 @@ FTGLDEF ftgl_return_t ftgl_font_library_init(void)
 	FT_Error ft_error;
 	ftgl_return_t ret;
 	if ((ft_error = FT_Init_FreeType(&ftgl_font_library)) != FT_Err_Ok) {
+		FTGL_LOG_MESSAGE("Failed to initialise FreeType!");
 		return FTGL_FREETYPE_ERROR;
 	}
 
@@ -465,18 +552,20 @@ FTGLDEF ftgl_return_t ftgl_font_library_init(void)
 	return FTGL_NO_ERROR;
 }
 
-static ftgl_font_node_t *ftgl_font_node_create(const char *name, const char *path,
-		      size_t ptsize)
+static ftgl_font_node_t ftgl_font_node_create(const char *name, const char *path,
+					      size_t ptsize)
 {
 	ftgl_return_t ret;
-	ftgl_font_node_t *font_node;
+	ftgl_font_node_t font_node;
 	font_node = FTGL_MALLOC(sizeof(*font_node));
 	if (!font_node) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return NULL;
 	}
 
 	font_node->name = FTGL_STRDUP(name);
 	if (!font_node->name) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		FTGL_FREE(font_node);
 		return NULL;
 	}
@@ -491,7 +580,7 @@ static ftgl_font_node_t *ftgl_font_node_create(const char *name, const char *pat
 	ret = ftgl_font_bind(font_node->font, path);
 	if (ret != FTGL_NO_ERROR) {
 		FTGL_FREE(font_node->name);
-		ftgl_font_free(font_node->font);
+		ftgl_font_free(&font_node->font);
 		FTGL_FREE(font_node);
 		return NULL;
 	}
@@ -499,7 +588,7 @@ static ftgl_font_node_t *ftgl_font_node_create(const char *name, const char *pat
 	ret = ftgl_font_set_size(font_node->font, ptsize);
 	if (ret != FTGL_NO_ERROR) {
 		FTGL_FREE(font_node->name);
-		ftgl_font_free(font_node->font);
+		ftgl_font_free(&font_node->font);
 		FTGL_FREE(font_node);
 		return NULL;
 	}
@@ -510,18 +599,19 @@ static ftgl_font_node_t *ftgl_font_node_create(const char *name, const char *pat
 static ftgl_return_t ftgl_font_manager_resize(void)
 {
 	size_t new_capacity, i, j;
-	ftgl_font_node_t **new_nodes;
+	ftgl_font_node_t *new_nodes;
 	uint32_t idx0, idx1, real_idx;
 	new_capacity = ftgl_font_manager.capacity << 1;
 	new_nodes = FTGL_CALLOC(new_capacity, sizeof(*new_nodes));
 	if (!new_nodes) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return FTGL_MEMORY_ERROR;
 	}
 
 	for (i = 0; i < ftgl_font_manager.capacity; i++) {
-		ftgl_font_node_t *font_node = ftgl_font_manager.nodes[i];
+		ftgl_font_node_t font_node = ftgl_font_manager.nodes[i];
 		if (!font_node) continue;
-		idx0 = ftgl_string_hash(font_node->name, strlen(font_node->name)) \
+		idx0 = ftgl_string_hash(font_node->name, strlen(font_node->name))
 			& (new_capacity - 1);
 		idx1 = idx0 | 1;
 
@@ -544,8 +634,9 @@ FTGLDEF ftgl_return_t ftgl_font_manager_insert(const char *name, const char *pat
 {
 	ftgl_return_t ret;
 	size_t idx0, idx1, real_idx, i;
-	ftgl_font_node_t *font_node, *new_node;
+	ftgl_font_node_t font_node, new_node;
 	if (!name || strlen(name) <= 0 || !path) {
+		FTGL_LOG_MESSAGE("Invalid arguments for font manager insertion!");
 		return FTGL_ARGUMENT_ERROR;
 	}
 	
@@ -557,6 +648,7 @@ FTGLDEF ftgl_return_t ftgl_font_manager_insert(const char *name, const char *pat
 
 	new_node = ftgl_font_node_create(name, path, ptsize);
 	if (!new_node) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return FTGL_MEMORY_ERROR;
 	}
 
@@ -579,9 +671,9 @@ FTGLDEF ftgl_return_t ftgl_font_manager_insert(const char *name, const char *pat
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_font_t * ftgl_font_manager_find(const char *name)
+FTGLDEF ftgl_font_t ftgl_font_manager_find(const char *name)
 {
-	ftgl_font_node_t *font_node;
+	ftgl_font_node_t font_node;
 	size_t idx0, idx1, real_idx, i;
 
 	idx0 = ftgl_string_hash(name, strlen(name));
@@ -595,17 +687,17 @@ FTGLDEF ftgl_font_t * ftgl_font_manager_find(const char *name)
 			return font_node->font;
 		}
 	}
-	
 	return NULL;
 }
 
-FTGLDEF ftgl_font_t * ftgl_font_create(void)
+FTGLDEF ftgl_font_t ftgl_font_create(void)
 {
 	GLenum gl_error;
-	ftgl_font_t *font;
+	ftgl_font_t font;
 
 	font = FTGL_MALLOC(sizeof(*font));
 	if (!font) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return NULL;
 	}
 
@@ -622,7 +714,8 @@ FTGLDEF ftgl_font_t * ftgl_font_create(void)
 
 	glGenTextures(1, &font->texture);
 	if ((gl_error = glGetError()) != GL_NO_ERROR) {
-		ftgl_glyphmap_free(font->glyphmap);
+		FTGL_LOG_MESSAGE("%s", gluErrorString(gl_error));
+		ftgl_glyphmap_free(&font->glyphmap);
 		FTGL_FREE(font);
 		return NULL;
 	}
@@ -635,8 +728,9 @@ FTGLDEF ftgl_font_t * ftgl_font_create(void)
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, FTGL_FONT_ATLAS_WIDTH,
 		     FTGL_FONT_ATLAS_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
 	if ((gl_error = glGetError()) != GL_NO_ERROR) {
+		FTGL_LOG_MESSAGE("%s", gluErrorString(gl_error));
 		glBindTexture(GL_TEXTURE_2D, 0);
-		ftgl_glyphmap_free(font->glyphmap);
+		ftgl_glyphmap_free(&font->glyphmap);
 		FTGL_FREE(font);
 		return NULL;
 	}
@@ -647,12 +741,13 @@ FTGLDEF ftgl_font_t * ftgl_font_create(void)
 	return font;
 }
 
-FTGLDEF ftgl_return_t ftgl_font_bind(ftgl_font_t *font, const char *path)
+FTGLDEF ftgl_return_t ftgl_font_bind(ftgl_font_t font, const char *path)
 {
 	FT_Error ft_error;
 
 	if (font->face) {
 		if ((ft_error = FT_Done_Face(font->face)) != FT_Err_Ok) {
+			FTGL_LOG_MESSAGE("Failed to destroy font!");
 			return FTGL_FREETYPE_ERROR;
 		}
 
@@ -661,13 +756,14 @@ FTGLDEF ftgl_return_t ftgl_font_bind(ftgl_font_t *font, const char *path)
 
 	if ((ft_error = FT_New_Face(ftgl_font_library, path,
 				    0, &font->face)) != FT_Err_Ok) {
+		FTGL_LOG_MESSAGE("Failed to create font!");
 		return FTGL_FREETYPE_ERROR;
 	}
 
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t ftgl_font_set_size(ftgl_font_t *font, float size)
+FTGLDEF ftgl_return_t ftgl_font_set_size(ftgl_font_t font, float size)
 {
 	FT_Error ft_error;
 	FT_Matrix matrix = {
@@ -678,12 +774,14 @@ FTGLDEF ftgl_return_t ftgl_font_set_size(ftgl_font_t *font, float size)
 	};
 
 	if (FT_HAS_FIXED_SIZES(font->face)) {
+		FTGL_LOG_MESSAGE("Can't set size for fixed sized fonts!");
 		return FTGL_FREETYPE_ERROR;
 	} else {
 		ft_error = FT_Set_Char_Size(font->face, ftgl_float_to_F26Dot6(size),
 					    0, FTGL_FONT_DPI * FTGL_FONT_HRES,
 					    FTGL_FONT_DPI);
 		if (ft_error != FT_Err_Ok) {
+			FTGL_LOG_MESSAGE("Failed to set font size!");
 			return FTGL_FREETYPE_ERROR;
 		}
 	}
@@ -1270,7 +1368,7 @@ FTGLDEF double * ftgl_distance_mapd(double *data, unsigned int width,
 	return data;
 }
 
-FTGLDEF unsigned char * ftgl_distance_mapb(unsigned char *img, unsigned int width,
+FTGLDEF unsigned char *ftgl_distance_mapb(unsigned char *img, unsigned int width,
 		   unsigned int height)
 {
 	double *data = FTGL_CALLOC(width * height, sizeof(*data));
@@ -1301,11 +1399,11 @@ FTGLDEF unsigned char * ftgl_distance_mapb(unsigned char *img, unsigned int widt
 	return out;
 }
 
-FTGLDEF ftgl_glyph_t * ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t codepoint)
+FTGLDEF ftgl_glyph_t ftgl_font_load_codepoint(ftgl_font_t font, uint32_t codepoint)
 {
 	FT_Error ft_error;
 	FT_GlyphSlot slot;
-	ftgl_glyph_t *glyph;
+	ftgl_glyph_t glyph;
 	ivec4_t glyph_bbox;
 	size_t src_w, src_h, tgt_w, tgt_h;
 
@@ -1321,6 +1419,7 @@ FTGLDEF ftgl_glyph_t * ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t code
 
 	ft_error = FT_Load_Char(font->face, codepoint, FT_LOAD_RENDER);
 	if (ft_error != FT_Err_Ok) {
+		FTGL_LOG_MESSAGE("Failed to load codepoint!");
 		return NULL;
 	}
 
@@ -1339,6 +1438,7 @@ FTGLDEF ftgl_glyph_t * ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t code
 	tgt_h = src_h + padding.y + padding.w;
 
 	if (font->tbox.y + tgt_h >= FTGL_FONT_ATLAS_HEIGHT) {
+		FTGL_LOG_MESSAGE("Font atlas is full!");
 		return NULL;
 	}
 
@@ -1348,6 +1448,7 @@ FTGLDEF ftgl_glyph_t * ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t code
 				 slot->bitmap_left, slot->bitmap_top,
 				 ftgl_F26Dot6_to_float(slot->advance.x),
 				 ftgl_F26Dot6_to_float(slot->advance.y)) != FTGL_NO_ERROR) {
+		FTGL_LOG_MESSAGE("Failed to insert glyph!");
 		return NULL;
 	}
 
@@ -1390,23 +1491,24 @@ FTGLDEF ftgl_glyph_t * ftgl_font_load_codepoint(ftgl_font_t *font, uint32_t code
 	return glyph;
 }
 
-FTGLDEF ftgl_glyph_t * ftgl_font_find_glyph(ftgl_font_t *font,
-		     uint32_t codepoint)
+FTGLDEF ftgl_glyph_t ftgl_font_find_glyph(ftgl_font_t font,
+					  uint32_t codepoint)
 {
 	return ftgl_glyphmap_find_glyph(font->glyphmap, codepoint);
 }
 
-FTGLDEF vec2_t ftgl_font_string_dimensions(const char *source, ftgl_font_t *font)
+FTGLDEF vec2_t ftgl_font_string_dimensions(const char *source, ftgl_font_t font)
 {
 	char c;
 	vec2_t v;
 	size_t i;
-	ftgl_glyph_t *glyph;
+	ftgl_glyph_t glyph;
 	float glyph_height;
 	v = ll_vec2_origin();
 	for (i = 0; (c = source[i]) != '\0'; i++) {
 		glyph = ftgl_font_find_glyph(font, c);
 		if (!glyph) {
+			FTGL_LOG_MESSAGE("Glyph not found in font!");
 			return ll_vec2_create2f(-1, -1);
 		}
 
@@ -1420,12 +1522,13 @@ FTGLDEF vec2_t ftgl_font_string_dimensions(const char *source, ftgl_font_t *font
 	return v;
 }
 
-FTGLDEF ftgl_string_t * ftgl_string_create(size_t reserve)
+FTGLDEF ftgl_string_t ftgl_string_create(size_t reserve)
 {
-	ftgl_string_t *s;
+	ftgl_string_t s;
 	reserve = reserve == 0 ? FTGL_STRING_CAPACITY : reserve;
 	s = FTGL_MALLOC(sizeof(*s));
 	if (!s) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return NULL;
 	}
 
@@ -1433,6 +1536,7 @@ FTGLDEF ftgl_string_t * ftgl_string_create(size_t reserve)
 	s->capacity = reserve;
 	s->data = FTGL_CALLOC(s->capacity, sizeof(*s->data));
 	if (!s->data) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		FTGL_FREE(s);
 		return NULL;
 	}
@@ -1455,7 +1559,7 @@ static size_t ftgl_npo2(size_t n)
 	return n;
 }
 
-static ftgl_return_t ftgl_string_resize(ftgl_string_t *s)
+static ftgl_return_t ftgl_string_resize(ftgl_string_t s)
 {
 	char *new_data;
 	size_t new_capacity;
@@ -1463,6 +1567,7 @@ static ftgl_return_t ftgl_string_resize(ftgl_string_t *s)
 	new_capacity = s->capacity << 1;
 	new_data = FTGL_REALLOC(s->data, sizeof(*new_data) * new_capacity);
 	if (!new_data) {
+		FTGL_LOG_MESSAGE("Ran out of memory!");
 		return FTGL_MEMORY_ERROR;
 	}
 
@@ -1473,7 +1578,7 @@ static ftgl_return_t ftgl_string_resize(ftgl_string_t *s)
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
+FTGLDEF ftgl_return_t ftgl_string_write_at(ftgl_string_t s, ftgl_font_t font,
 		     char *buffer, size_t buffer_len, size_t pos)
 {
 	ftgl_return_t ret;
@@ -1484,14 +1589,15 @@ FTGLDEF ftgl_return_t ftgl_string_write_at(ftgl_string_t *s, ftgl_font_t *font,
 	}
 
 	memcpy(s->data + pos, buffer, buffer_len);
-	if (buffer_len + pos > s->size) 
+	if (buffer_len + pos > s->size) {
 		s->size = buffer_len + pos;
+	}
 	s->data[s->size] = '\0';
 	s->updated = 1;
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
+FTGLDEF ftgl_return_t ftgl_string_write(ftgl_string_t s, ftgl_font_t font,
 		  char *buffer, size_t buffer_len)
 {
 	ftgl_return_t ret;
@@ -1508,17 +1614,17 @@ FTGLDEF ftgl_return_t ftgl_string_write(ftgl_string_t *s, ftgl_font_t *font,
 	return FTGL_NO_ERROR;
 }
 
-FTGLDEF ftgl_return_t ftgl_string_append(ftgl_string_t *s, ftgl_font_t *font,
+FTGLDEF ftgl_return_t ftgl_string_append(ftgl_string_t s, ftgl_font_t font,
 		   char *buffer, size_t buffer_len)
 {
 	return ftgl_string_write_at(s, font, buffer, buffer_len, s->size);
 }
 
-FTGLDEF vec2_t ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
+FTGLDEF vec2_t ftgl_string_dimensions(ftgl_string_t s, ftgl_font_t font)
 {
 	vec2_t v;
 	size_t i;
-	ftgl_glyph_t *glyph;
+	ftgl_glyph_t glyph;
 	float glyph_height;
 	if (!s->updated) {
 		return ll_vec2_create2f(s->width, s->height);
@@ -1528,6 +1634,7 @@ FTGLDEF vec2_t ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
 	for (i = 0; i < s->size; i++) {
 		glyph = ftgl_font_find_glyph(font, s->data[i]);
 		if (!glyph) {
+			FTGL_LOG_MESSAGE("Glyph not in font!");
 			return ll_vec2_create2f(-1, -1);
 		}
 
@@ -1546,41 +1653,41 @@ FTGLDEF vec2_t ftgl_string_dimensions(ftgl_string_t *s, ftgl_font_t *font)
 
 FTGLDEF void ftgl_string_free(ftgl_string_t *s)
 {
-	FTGL_FREE(s->data);
-	s->data = NULL;
-	s->size = 0;
-	s->capacity = 0;
-	FTGL_FREE(s);
+	FTGL_FREE((*s)->data);
+	(*s)->data = NULL;
+	(*s)->size = 0;
+	(*s)->capacity = 0;
+	FTGL_FREE(*s);
 }
 
 FTGLDEF void ftgl_font_free(ftgl_font_t *font)
 {
-	glDeleteTextures(1, &font->texture);
-	FT_Done_Face(font->face);
-	ftgl_glyphmap_free(font->glyphmap);
-	font->face = NULL;
-	font->glyphmap = NULL;
-	font->tbox = ll_ivec2_create2i(0,0);
-	font->tbox_yjump = 0;
-	font->scale = 0.0;
-	FTGL_FREE(font);
+	glDeleteTextures(1, &(*font)->texture);
+	FT_Done_Face((*font)->face);
+	ftgl_glyphmap_free(&(*font)->glyphmap);
+	(*font)->face = NULL;
+	(*font)->glyphmap = NULL;
+	(*font)->tbox = ll_ivec2_create2i(0,0);
+	(*font)->tbox_yjump = 0;
+	(*font)->scale = 0.0;
+	FTGL_FREE(*font);
 }
 
 static void ftgl_font_node_free(ftgl_font_node_t *font_node)
 {
-	FTGL_FREE(font_node->name);
-	ftgl_font_free(font_node->font);
-	FTGL_FREE(font_node);
+	FTGL_FREE((*font_node)->name);
+	ftgl_font_free(&(*font_node)->font);
+	FTGL_FREE(*font_node);
 }	
 
 static void ftgl_font_manager_free(void)
 {
 	size_t i;
-	ftgl_font_node_t *font_node;
+	ftgl_font_node_t font_node;
 	for (i = 0; i < ftgl_font_manager.capacity; i++) {
 		font_node = ftgl_font_manager.nodes[i];
 		if (font_node) {
-			ftgl_font_node_free(font_node);
+			ftgl_font_node_free(&font_node);
 		}
 	}
 	FTGL_FREE(ftgl_font_manager.nodes);
